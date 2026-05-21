@@ -4,7 +4,6 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useAtlasStore } from '@/lib/store';
 import { Project, CATEGORY_COLORS, LANGUAGE_COLORS } from '@/lib/types';
 import { ProjectHoverCard } from '@/components/project-hover-card';
-import { motion } from 'framer-motion';
 
 interface NodePosition {
   id: string;
@@ -27,6 +26,9 @@ interface ProjectGraphProps {
   projects: Project[];
 }
 
+// Global cache for node positions to survive re-renders/view switches
+const nodePositionCache = new Map<string, { x: number; y: number }>();
+
 export function ProjectGraph({ projects }: ProjectGraphProps) {
   const { setSelectedProject, activeTags } = useAtlasStore();
   const svgRef = useRef<SVGSVGElement>(null);
@@ -39,32 +41,24 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
   const nodesRef = useRef<NodePosition[]>([]);
   const draggingRef = useRef<string | null>(null);
   const dragOffsetRef = useRef({ x: 0, y: 0 });
+  const initializedRef = useRef(false);
+  const edgesRef = useRef<Edge[]>([]);
 
-  // Build nodes and edges from projects
-  const graphData = useMemo(() => {
-    const nodeSize = (p: Project) => Math.max(8, Math.min(28, 8 + p.stargazersCount * 3));
-    const nodeColor = (p: Project) => {
-      if (p.category && CATEGORY_COLORS[p.category]) return CATEGORY_COLORS[p.category];
-      if (p.language && LANGUAGE_COLORS[p.language]) return LANGUAGE_COLORS[p.language];
-      return '#64748b';
-    };
+  const nodeSize = useCallback((p: Project) => {
+    const base = 10;
+    const starBonus = Math.min(p.stargazersCount * 3, 15);
+    const recencyBonus = p.pushedAt ? (Date.now() - new Date(p.pushedAt).getTime() < 30 * 24 * 60 * 60 * 1000 ? 3 : 0) : 0;
+    return base + starBonus + recencyBonus;
+  }, []);
 
-    const newNodes: NodePosition[] = projects.map((p, i) => {
-      const angle = (i / projects.length) * Math.PI * 2;
-      const spread = Math.min(dimensions.width, dimensions.height) * 0.3;
-      return {
-        id: p.id,
-        x: dimensions.width / 2 + Math.cos(angle) * spread * (0.5 + Math.random()),
-        y: dimensions.height / 2 + Math.sin(angle) * spread * (0.5 + Math.random()),
-        vx: 0,
-        vy: 0,
-        project: p,
-        radius: nodeSize(p),
-        color: nodeColor(p),
-      };
-    });
+  const nodeColor = useCallback((p: Project) => {
+    if (p.category && CATEGORY_COLORS[p.category]) return CATEGORY_COLORS[p.category];
+    if (p.language && LANGUAGE_COLORS[p.language]) return LANGUAGE_COLORS[p.language];
+    return '#64748b';
+  }, []);
 
-    // Build edges based on shared tags
+  // Build edges from projects
+  const computedEdges = useMemo(() => {
     const newEdges: Edge[] = [];
     for (let i = 0; i < projects.length; i++) {
       for (let j = i + 1; j < projects.length; j++) {
@@ -78,15 +72,13 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         }
       }
     }
-
-    return { nodes: newNodes, edges: newEdges };
-  }, [projects, dimensions]);
+    return newEdges;
+  }, [projects]);
 
   // Resize observer
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
-
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
@@ -97,36 +89,60 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     return () => observer.disconnect();
   }, []);
 
-  // Initialize nodes
+  // Initialize nodes (use cached positions if available)
   useEffect(() => {
-    if (graphData.nodes.length > 0 && nodesRef.current.length === 0) {
-      nodesRef.current = graphData.nodes.map((n) => ({ ...n }));
-      setNodes(nodesRef.current);
-      setEdges(graphData.edges);
-    }
-  }, [graphData]);
+    if (projects.length === 0) return;
+
+    const cx = dimensions.width / 2;
+    const cy = dimensions.height / 2;
+    const spread = Math.min(dimensions.width, dimensions.height) * 0.3;
+
+    const newNodes: NodePosition[] = projects.map((p, i) => {
+      const cached = nodePositionCache.get(p.id);
+      const angle = (i / projects.length) * Math.PI * 2;
+
+      return {
+        id: p.id,
+        x: cached?.x ?? (cx + Math.cos(angle) * spread * (0.5 + Math.random() * 0.5)),
+        y: cached?.y ?? (cy + Math.sin(angle) * spread * (0.5 + Math.random() * 0.5)),
+        vx: 0,
+        vy: 0,
+        project: p,
+        radius: nodeSize(p),
+        color: nodeColor(p),
+      };
+    });
+
+    nodesRef.current = newNodes;
+    edgesRef.current = computedEdges;
+    setNodes([...newNodes]);
+    setEdges(computedEdges);
+    initializedRef.current = true;
+  }, [projects, dimensions, computedEdges, nodeSize, nodeColor]);
 
   // Force simulation
   useEffect(() => {
-    if (nodesRef.current.length === 0) return;
+    if (!initializedRef.current || nodesRef.current.length === 0) return;
 
     const centerX = dimensions.width / 2;
     const centerY = dimensions.height / 2;
 
     const simulate = () => {
       const ns = nodesRef.current;
+      const es = edgesRef.current;
       const damping = 0.92;
-      const repulsionStrength = 3000;
-      const attractionStrength = 0.005;
-      const centeringStrength = 0.01;
+      const repulsionStrength = 3500;
+      const attractionStrength = 0.004;
+      const centeringStrength = 0.008;
 
-      // Repulsion between all pairs
+      // Repulsion
       for (let i = 0; i < ns.length; i++) {
         for (let j = i + 1; j < ns.length; j++) {
           const dx = ns[i].x - ns[j].x;
           const dy = ns[i].y - ns[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-          const force = repulsionStrength / (dist * dist);
+          const distSq = dx * dx + dy * dy;
+          const dist = Math.sqrt(distSq) || 1;
+          const force = repulsionStrength / (distSq + 100);
           const fx = (dx / dist) * force;
           const fy = (dy / dist) * force;
           ns[i].vx += fx;
@@ -136,15 +152,15 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         }
       }
 
-      // Attraction along edges
-      for (const edge of graphData.edges) {
+      // Attraction
+      for (const edge of es) {
         const source = ns.find((n) => n.id === edge.source);
         const target = ns.find((n) => n.id === edge.target);
         if (!source || !target) continue;
         const dx = target.x - source.x;
         const dy = target.y - source.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const idealDist = 120;
+        const idealDist = 130;
         const force = (dist - idealDist) * attractionStrength * edge.weight;
         const fx = (dx / dist) * force;
         const fy = (dy / dist) * force;
@@ -154,23 +170,23 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         target.vy -= fy;
       }
 
-      // Centering force + update positions
+      // Update
       for (const node of ns) {
         if (draggingRef.current === node.id) continue;
 
         node.vx += (centerX - node.x) * centeringStrength;
         node.vy += (centerY - node.y) * centeringStrength;
-
         node.vx *= damping;
         node.vy *= damping;
-
         node.x += node.vx;
         node.y += node.vy;
 
-        // Bounds
-        const pad = node.radius + 5;
+        const pad = node.radius + 10;
         node.x = Math.max(pad, Math.min(dimensions.width - pad, node.x));
         node.y = Math.max(pad, Math.min(dimensions.height - pad, node.y));
+
+        // Cache position
+        nodePositionCache.set(node.id, { x: node.x, y: node.y });
       }
 
       setNodes([...ns]);
@@ -179,9 +195,8 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
 
     animRef.current = requestAnimationFrame(simulate);
     return () => cancelAnimationFrame(animRef.current);
-  }, [graphData.edges, dimensions]);
+  }, [dimensions]);
 
-  // Mouse handlers
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
       const svg = svgRef.current;
@@ -220,7 +235,6 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     draggingRef.current = null;
   }, []);
 
-  // Determine if node is dimmed (doesn't match active tags)
   const isNodeDimmed = useCallback(
     (node: NodePosition) => {
       if (activeTags.length === 0) return false;
@@ -231,16 +245,25 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     [activeTags]
   );
 
-  // Get connected node IDs for hover highlighting
   const connectedNodes = useMemo(() => {
     if (!hoveredNode) return new Set<string>();
     const connected = new Set<string>([hoveredNode]);
-    for (const edge of graphData.edges) {
+    for (const edge of edges) {
       if (edge.source === hoveredNode) connected.add(edge.target);
       if (edge.target === hoveredNode) connected.add(edge.source);
     }
     return connected;
-  }, [hoveredNode, graphData.edges]);
+  }, [hoveredNode, edges]);
+
+  // Get category icon initial letter
+  const categoryIcon = useCallback((cat: string | null) => {
+    if (!cat) return '?';
+    const map: Record<string, string> = {
+      tool: '⚙', library: '📚', application: '🖥', template: '📋',
+      experiment: '🧪', config: '🔧', documentation: '📖', learning: '🎓', archive: '📦',
+    };
+    return map[cat] || '●';
+  }, []);
 
   if (projects.length === 0) {
     return (
@@ -261,7 +284,6 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
-        {/* Defs for glow effects */}
         <defs>
           <filter id="glow">
             <feGaussianBlur stdDeviation="3" result="coloredBlur" />
@@ -277,7 +299,16 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
+          <filter id="shadow">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="rgba(0,0,0,0.3)" />
+          </filter>
         </defs>
+
+        {/* Background grid pattern */}
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(255,255,255,0.02)" strokeWidth="1" />
+        </pattern>
+        <rect width="100%" height="100%" fill="url(#grid)" />
 
         {/* Edges */}
         {edges.map((edge, i) => {
@@ -286,7 +317,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
           if (!source || !target) return null;
 
           const isHighlighted = hoveredNode && (edge.source === hoveredNode || edge.target === hoveredNode);
-          const opacity = isHighlighted ? 0.5 : 0.08;
+          const opacity = isHighlighted ? 0.6 : 0.06;
 
           return (
             <line
@@ -296,7 +327,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
               x2={target.x}
               y2={target.y}
               stroke={isHighlighted ? '#10b981' : '#ffffff'}
-              strokeWidth={isHighlighted ? Math.min(edge.weight * 0.8, 3) : 0.5}
+              strokeWidth={isHighlighted ? Math.min(edge.weight * 1, 3) : 0.5}
               opacity={opacity}
               style={{ transition: 'opacity 0.3s, stroke-width 0.3s' }}
             />
@@ -308,7 +339,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
           const isHovered = hoveredNode === node.id;
           const isConnected = connectedNodes.has(node.id);
           const dimmed = isNodeDimmed(node);
-          const opacity = dimmed ? 0.15 : isHovered ? 1 : isConnected && hoveredNode ? 0.9 : 0.7;
+          const opacity = dimmed ? 0.12 : isHovered ? 1 : isConnected && hoveredNode ? 0.85 : 0.65;
 
           return (
             <g
@@ -320,44 +351,69 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
               style={{ cursor: 'pointer', transition: 'opacity 0.3s' }}
               opacity={opacity}
             >
-              {/* Glow ring on hover */}
+              {/* Outer glow ring on hover */}
               {isHovered && (
-                <circle
-                  cx={node.x}
-                  cy={node.y}
-                  r={node.radius + 6}
-                  fill="none"
-                  stroke={node.color}
-                  strokeWidth={2}
-                  opacity={0.4}
-                  filter="url(#strongGlow)"
-                />
+                <>
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={node.radius + 10}
+                    fill="none"
+                    stroke={node.color}
+                    strokeWidth={1.5}
+                    opacity={0.2}
+                    filter="url(#strongGlow)"
+                  />
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={node.radius + 5}
+                    fill="none"
+                    stroke={node.color}
+                    strokeWidth={2}
+                    opacity={0.4}
+                  />
+                </>
               )}
+
+              {/* Shadow */}
+              <circle
+                cx={node.x + 2}
+                cy={node.y + 2}
+                r={isHovered ? node.radius + 2 : node.radius}
+                fill="rgba(0,0,0,0.3)"
+              />
 
               {/* Main circle */}
               <circle
                 cx={node.x}
                 cy={node.y}
-                r={isHovered ? node.radius + 3 : node.radius}
+                r={isHovered ? node.radius + 2 : node.radius}
                 fill={node.color}
-                opacity={isHovered ? 0.9 : 0.6}
+                opacity={isHovered ? 0.95 : 0.7}
                 filter={isHovered ? 'url(#glow)' : undefined}
-                style={{ transition: 'r 0.2s, opacity 0.2s' }}
+                stroke={isHovered ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)'}
+                strokeWidth={isHovered ? 2 : 1}
               />
 
-              {/* Inner highlight */}
-              <circle
-                cx={node.x - node.radius * 0.25}
-                cy={node.y - node.radius * 0.25}
-                r={node.radius * 0.3}
-                fill="white"
-                opacity={0.15}
-              />
+              {/* Category icon in center for larger nodes */}
+              {node.radius >= 12 && (
+                <text
+                  x={node.x}
+                  y={node.y + 1}
+                  textAnchor="middle"
+                  dominantBaseline="central"
+                  fontSize={node.radius * 0.7}
+                  className="pointer-events-none select-none"
+                >
+                  {categoryIcon(node.project.category)}
+                </text>
+              )}
 
               {/* Label */}
               <text
                 x={node.x}
-                y={node.y + node.radius + 14}
+                y={node.y + node.radius + 15}
                 textAnchor="middle"
                 fill={isHovered ? '#e2e8f0' : '#94a3b8'}
                 fontSize={isHovered ? 11 : 9}
@@ -367,6 +423,19 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
               >
                 {node.project.name.length > 18 ? node.project.name.slice(0, 16) + '…' : node.project.name}
               </text>
+
+              {/* Activity indicator - small dot for recently active */}
+              {node.project.pushedAt && (Date.now() - new Date(node.project.pushedAt).getTime() < 7 * 24 * 60 * 60 * 1000) && (
+                <circle
+                  cx={node.x + node.radius * 0.65}
+                  cy={node.y - node.radius * 0.65}
+                  r={3}
+                  fill="#10b981"
+                  stroke="#0a0a0a"
+                  strokeWidth={1.5}
+                  className="pointer-events-none"
+                />
+              )}
             </g>
           );
         })}

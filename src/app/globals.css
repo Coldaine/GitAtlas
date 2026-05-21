@@ -87,6 +87,13 @@
   }
 }
 
+/* Gradient animation for hero title */
+@keyframes gradient {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
@@ -101,4 +108,43 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: oklch(0.5 0 0);
+}
+
+/* Smooth prose styling for README */
+.prose h1, .prose h2, .prose h3 {
+  color: oklch(0.8 0 0);
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+.prose p {
+  margin-bottom: 0.75em;
+}
+.prose a {
+  color: #10b981;
+  text-decoration: underline;
+}
+.prose code {
+  background: oklch(0.25 0 0);
+  padding: 0.15em 0.3em;
+  border-radius: 3px;
+  font-size: 0.85em;
+}
+.prose pre {
+  background: oklch(0.2 0 0);
+  padding: 0.75em;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.prose ul, .prose ol {
+  padding-left: 1.5em;
+  margin-bottom: 0.75em;
+}
+.prose li {
+  margin-bottom: 0.25em;
+}
+.prose blockquote {
+  border-left: 3px solid oklch(0.3 0 0);
+  padding-left: 1em;
+  color: oklch(0.6 0 0);
 }
