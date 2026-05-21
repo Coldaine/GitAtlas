@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Project {
+  id               String    @id @default(cuid())
+  githubId         Int       @unique
+  name             String
+  fullName         String
+  description      String?
+  htmlUrl          String
+  homepage         String?
+  language          String?
+  stargazersCount  Int       @default(0)
+  forksCount       Int       @default(0)
+  openIssuesCount  Int       @default(0)
+  githubCreatedAt  DateTime
+  githubUpdatedAt  DateTime
+  pushedAt         DateTime?
+  topics           String    @default("")
+  isFork           Boolean   @default(false)
+  isArchived       Boolean   @default(false)
+  ownerLogin       String
+  ownerType        String    @default("User")
+  ownerAvatarUrl   String?
+  defaultBranch    String    @default("main")
+  visibility       String    @default("public")
+  summary          String?
+  tags             String?
+  category         String?
+  readmeContent    String?
+  analyzedAt       DateTime?
+  createdAt        DateTime  @default(now())
+}
+
+model AnalysisJob {
+  id            String   @id @default(cuid())
+  username      String
+  status        String   @default("pending")
+  totalRepos    Int      @default(0)
+  processedRepos Int     @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

@@ -1,0 +1,72 @@
+export interface Project {
+  id: string;
+  githubId: number;
+  name: string;
+  fullName: string;
+  description: string | null;
+  htmlUrl: string;
+  homepage: string | null;
+  language: string | null;
+  stargazersCount: number;
+  forksCount: number;
+  openIssuesCount: number;
+  githubCreatedAt: string;
+  githubUpdatedAt: string;
+  pushedAt: string | null;
+  topics: string[];
+  isFork: boolean;
+  isArchived: boolean;
+  ownerLogin: string;
+  ownerType: string;
+  ownerAvatarUrl: string | null;
+  defaultBranch: string;
+  visibility: string;
+  summary: string | null;
+  tags: string[];
+  category: string | null;
+  readmeContent: string | null;
+  analyzedAt: string | null;
+}
+
+export interface AnalysisJob {
+  id: string;
+  username: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  totalRepos: number;
+  processedRepos: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ViewMode = 'graph' | 'grid' | 'timeline';
+
+export const CATEGORY_COLORS: Record<string, string> = {
+  tool: '#10b981',
+  library: '#f59e0b',
+  application: '#ef4444',
+  template: '#8b5cf6',
+  experiment: '#ec4899',
+  config: '#6366f1',
+  documentation: '#14b8a6',
+  learning: '#f97316',
+  archive: '#64748b',
+};
+
+export const LANGUAGE_COLORS: Record<string, string> = {
+  TypeScript: '#3178c6',
+  JavaScript: '#f1e05a',
+  Python: '#3572A5',
+  Rust: '#dea584',
+  Shell: '#89e051',
+  PowerShell: '#012456',
+  HTML: '#e34c26',
+  CSS: '#563d7c',
+  Go: '#00ADD8',
+  Java: '#b07219',
+  'C++': '#f34b7d',
+  C: '#555555',
+  Ruby: '#701516',
+  Swift: '#F05138',
+  Kotlin: '#A97BFF',
+  Dart: '#00B4AB',
+};
