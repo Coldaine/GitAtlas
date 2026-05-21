@@ -7,6 +7,7 @@ import { ProjectGrid } from '@/components/project-grid';
 import { TimelineView } from '@/components/timeline-view';
 import { DetailPanel } from '@/components/detail-panel';
 import { SmartSearchDialog } from '@/components/smart-search-dialog';
+import { CompareDialog } from '@/components/compare-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +19,7 @@ import {
   Network, LayoutGrid, Flame, Clock, Loader2,
   FolderOpen, Code2, ChevronRight, X,
   Microscope, Calendar, FileText, Keyboard,
+  ShieldCheck, AlertTriangle, Archive, GitCompare,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useState, useMemo, useCallback, useEffect } from 'react';
@@ -37,6 +39,7 @@ export function CockpitDashboard() {
   const [isRewritingReadmes, setIsRewritingReadmes] = useState(false);
   const [readmeProgress, setReadmeProgress] = useState('');
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
+  const [compareOpen, setCompareOpen] = useState(false);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -329,6 +332,16 @@ export function CockpitDashboard() {
             <Zap className="w-3 h-3" />Do I have...?
           </Button>
 
+          {/* Compare */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCompareOpen(true)}
+            className="h-7 gap-1 text-xs border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 px-2"
+          >
+            <GitCompare className="w-3 h-3" />Compare
+          </Button>
+
           {/* Deep Analyze All */}
           <Button
             variant="outline"
@@ -587,8 +600,8 @@ export function CockpitDashboard() {
           )}
         </div>
 
-        {/* RIGHT PANEL — Activity feed */}
-        <div className="w-56 shrink-0 border-l border-border/15 bg-card/10 flex flex-col overflow-hidden">
+        {/* RIGHT PANEL — Activity feed + Insights */}
+        <div className="w-60 shrink-0 border-l border-border/15 bg-card/10 flex flex-col overflow-hidden">
           <div className="px-3 py-2 border-b border-border/10">
             <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Recent Activity</h3>
           </div>
@@ -615,9 +628,14 @@ export function CockpitDashboard() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-[11px] font-medium text-foreground/80 truncate group-hover:text-foreground transition-colors">
-                          {p.name}
-                        </p>
+                        <div className="flex items-center gap-1">
+                          <p className="text-[11px] font-medium text-foreground/80 truncate group-hover:text-foreground transition-colors">
+                            {p.name}
+                          </p>
+                          {p.deepAnalyzedAt && (
+                            <ShieldCheck className="w-2.5 h-2.5 text-emerald-400/50 shrink-0" />
+                          )}
+                        </div>
                         {p.summary && (
                           <p className="text-[9px] text-muted-foreground/40 line-clamp-2 leading-tight mt-0.5">
                             {p.summary}
@@ -631,9 +649,6 @@ export function CockpitDashboard() {
                               {formatDistanceToNow(new Date(p.pushedAt), { addSuffix: true })}
                             </span>
                           )}
-                          {p.deepAnalyzedAt && (
-                            <Microscope className="w-2.5 h-2.5 text-emerald-400/50" />
-                          )}
                         </div>
                       </div>
                       <ChevronRight className="w-3 h-3 text-muted-foreground/20 group-hover:text-foreground/40 transition-colors mt-1 shrink-0" />
@@ -644,7 +659,57 @@ export function CockpitDashboard() {
             </div>
           </ScrollArea>
 
-          {/* Top starred */}
+          {/* Deep Analysis Progress */}
+          <div className="border-t border-border/10 px-3 py-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider flex items-center gap-1">
+                <Microscope className="w-2.5 h-2.5" /> Deep Analysis
+              </h3>
+              <span className="text-[9px] text-emerald-400/50">{deepAnalyzedCount}/{projects.length}</span>
+            </div>
+            <div className="w-full h-1.5 rounded-full bg-card/50 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-emerald-500/60 transition-all duration-500"
+                style={{ width: `${(deepAnalyzedCount / Math.max(projects.length, 1)) * 100}%` }}
+              />
+            </div>
+            {deepAnalyzedCount < projects.length && (
+              <p className="text-[9px] text-muted-foreground/30 mt-1">
+                {projects.length - deepAnalyzedCount} repos awaiting analysis
+              </p>
+            )}
+          </div>
+
+          {/* Needs Attention */}
+          {projects.filter(p => p.isArchived || (p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() > 180 * 24 * 60 * 60 * 1000))).length > 0 && (
+            <div className="border-t border-border/10 px-3 py-2">
+              <h3 className="text-[10px] font-medium text-orange-400/50 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+                <AlertTriangle className="w-2.5 h-2.5" /> Needs Attention
+              </h3>
+              {projects
+                .filter(p => p.isArchived || (p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() > 180 * 24 * 60 * 60 * 1000)))
+                .slice(0, 4)
+                .map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => setSelectedProject(p)}
+                    className="w-full flex items-center gap-2 py-1 text-left hover:bg-card/30 rounded px-1 transition-colors"
+                  >
+                    {p.isArchived ? (
+                      <Archive className="w-3 h-3 text-orange-400/50" />
+                    ) : (
+                      <Clock className="w-3 h-3 text-muted-foreground/30" />
+                    )}
+                    <span className="text-[10px] text-foreground/50 truncate flex-1">{p.name}</span>
+                    <span className="text-[8px] text-orange-400/40">
+                      {p.isArchived ? 'archived' : '6mo+'}
+                    </span>
+                  </button>
+                ))}
+            </div>
+          )}
+
+          {/* Top Starred */}
           <div className="border-t border-border/10 px-3 py-2">
             <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1.5">Most Starred</h3>
             {[...projects].sort((a, b) => b.stargazersCount - a.stargazersCount).slice(0, 4).map(p => (
@@ -731,6 +796,9 @@ export function CockpitDashboard() {
 
       {/* Smart search dialog */}
       <SmartSearchDialog open={smartSearchOpen} onOpenChange={setSmartSearchOpen} username={username} />
+
+      {/* Compare dialog */}
+      <CompareDialog open={compareOpen} onOpenChange={setCompareOpen} />
 
       {/* Keyboard shortcuts overlay */}
       <AnimatePresence>

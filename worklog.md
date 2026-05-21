@@ -199,3 +199,74 @@ Stage Summary:
 - Push proposed READMEs back to GitHub (requires write permissions)
 - Org-level analysis (ProjectBroadside repos not yet deep-analyzed)
 - Add commit history analysis for each project
+
+---
+Task ID: 7
+Agent: Cron Review
+Task: QA + Styling improvements + New features
+
+Work Log:
+- Performed comprehensive QA via agent-browser:
+  - App loads correctly with 28 repos
+  - All 3 views (graph, grid, timeline) working
+  - Detail panel shows deep analysis sections correctly
+  - Smart search, keyboard shortcuts all functional
+  - Only 1/28 repos deep-analyzed (most powerful features dormant)
+  - APIs responding correctly, no runtime errors
+- Enhanced grid cards (`/src/components/project-grid.tsx`):
+  - Added category icon box with deep analysis shield badge
+  - Deep summary shown in emerald-tinted box when available
+  - Code signature badges (frameworks/patterns) shown on cards
+  - Dependency count shown with Package icon
+  - Activity-colored timestamp (hot/warm/cool/cold)
+  - "Verified" badge for deep-analyzed projects
+  - Top accent line colored by category
+  - Archived indicator with Archive icon
+- Enhanced right panel (`/src/components/cockpit-dashboard.tsx`):
+  - Widened from w-56 to w-60 for better readability
+  - Added "Deep Analysis" progress section with progress bar (1/28)
+  - Added "Needs Attention" section for archived/6mo+ stale repos
+  - ShieldCheck icons next to deep-analyzed project names in activity feed
+  - Better visual hierarchy with section dividers
+- Enhanced graph nodes (`/src/components/project-graph.tsx`):
+  - Deep-analyzed nodes get emerald dashed ring indicator
+  - Deep-analyzed nodes rendered with slight glow filter
+  - Deep-analyzed nodes have emerald stroke border
+  - Higher opacity for deep-analyzed nodes (0.8 vs 0.65)
+  - Added "Verified" legend item below minimap
+- Created Compare dialog (`/src/components/compare-dialog.tsx`):
+  - Select any 2 projects for side-by-side comparison
+  - Shows stats, language, category, last push, dep count, frameworks
+  - Displays shared tags, unique tags (Only A / Only B)
+  - Shows shared dependencies
+  - Side-by-side summary comparison
+  - Click through to detail panel
+- Added Compare button (cyan) in header toolbar
+- All changes lint clean, no runtime errors
+
+Stage Summary:
+- Grid cards now visually rich with deep analysis indicators, framework badges, dep counts
+- Right panel has Deep Analysis progress tracker and Needs Attention section
+- Graph nodes visually distinguish deep-analyzed repos with emerald ring
+- Project Comparison dialog enables side-by-side analysis of any 2 repos
+- Overall visual depth and information density significantly improved
+
+## Current Project Status
+- **28 repos** loaded for Coldaine, **1 deep analyzed** (ComfyWatchman)
+- **3 views**: Force-directed graph, card grid, timeline
+- **Graph**: Deep-analyzed nodes have emerald ring indicator + Verified legend
+- **Grid Cards**: Category icons, deep analysis shields, framework badges, dep counts, accent lines
+- **Right Panel**: Activity feed, Deep Analysis progress (1/28), Needs Attention, Most Starred
+- **Detail Panel**: Code-Verified summary, code signature, file tree, dependencies, similar projects, proposed README
+- **Smart Search**: "Do I already have X?" with deep analysis data
+- **Compare**: Side-by-side project comparison dialog
+- **Keyboard Shortcuts**: /, ⌘1/2/3, ?, Esc
+
+## Unresolved / Next Steps
+- Deep analysis only run on 1 of 28 repos — user should run "Deep Analyze All" to unlock full power
+- Mobile responsiveness improvements
+- Better graph clustering (group by category with background regions)
+- Push proposed READMEs back to GitHub (requires write permissions)
+- Org-level analysis (ProjectBroadside repos not yet deep-analyzed)
+- Commit history analysis for each project
+- Activity heatmap visualization

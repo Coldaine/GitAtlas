@@ -449,6 +449,20 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                   </>
                 )}
 
+                {/* Deep analysis ring — emerald ring for deep-analyzed repos */}
+                {node.project.deepAnalyzedAt && !isHovered && (
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={node.radius + 4}
+                    fill="none"
+                    stroke="#10b981"
+                    strokeWidth={1.5}
+                    opacity={0.35}
+                    strokeDasharray="3 2"
+                  />
+                )}
+
                 {/* Shadow */}
                 <circle
                   cx={node.x + 2}
@@ -463,10 +477,10 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                   cy={node.y}
                   r={isHovered ? node.radius + 2 : node.radius}
                   fill={node.color}
-                  opacity={isHovered ? 0.95 : 0.7}
-                  filter={isHovered ? 'url(#glow)' : undefined}
-                  stroke={isHovered ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)'}
-                  strokeWidth={isHovered ? 2 : 1}
+                  opacity={isHovered ? 0.95 : node.project.deepAnalyzedAt ? 0.8 : 0.65}
+                  filter={isHovered ? 'url(#glow)' : node.project.deepAnalyzedAt ? 'url(#glow)' : undefined}
+                  stroke={isHovered ? 'rgba(255,255,255,0.3)' : node.project.deepAnalyzedAt ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.08)'}
+                  strokeWidth={isHovered ? 2 : node.project.deepAnalyzedAt ? 1.5 : 1}
                 />
 
                 {/* Category icon in center for larger nodes */}
@@ -628,6 +642,26 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
             className="pointer-events-none select-none"
           >
             Deps
+          </text>
+          {/* Deep analyzed legend */}
+          <circle
+            cx={dimensions.width - minimapWidth - minimapPadding + 6}
+            cy={minimapPadding + minimapHeight + 43}
+            r={4}
+            fill="none"
+            stroke="#10b981"
+            strokeWidth={1.5}
+            opacity={0.4}
+            strokeDasharray="3 2"
+          />
+          <text
+            x={dimensions.width - minimapWidth - minimapPadding + 19}
+            y={minimapPadding + minimapHeight + 46}
+            fill="rgba(148,163,184,0.3)"
+            fontSize={7}
+            className="pointer-events-none select-none"
+          >
+            Verified
           </text>
         </g>
       </svg>
