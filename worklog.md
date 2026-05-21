@@ -102,3 +102,100 @@ Stage Summary:
 - Add "Similar Projects" section in detail panel
 - Mobile responsiveness improvements
 - README rewriting feature (Phase 2 from original plan)
+
+---
+Task ID: 2
+Agent: Frontend Enhancement
+Task: Deep Analysis Features — Frontend Enhancement
+
+Work Log:
+- Updated `/src/lib/types.ts` — Added FileTreeNode interface and 8 deep analysis fields to Project interface (fileTree, dependencies, keyFiles, deepSummary, deepAnalyzedAt, proposedReadme, readmeGeneratedAt, similarProjects, codeSignature)
+- Updated `/src/lib/store.ts` — Added isDeepAnalyzing, deepAnalyzeProgress state and setters, plus updateProject() action for granular project updates
+- Created `/src/app/api/github/deep-analyze/route.ts` — POST endpoint that fetches file trees from GitHub API, parses dependencies (package.json/requirements.txt/Cargo.toml), extracts key files, detects code signatures (frameworks/patterns/architecture), generates deep summaries, and finds similar projects
+- Created `/src/app/api/github/file-tree/route.ts` — GET endpoint that returns repo file tree, with caching in DB
+- Created `/src/app/api/github/similar-projects/route.ts` — GET endpoint that computes similarity scores based on shared language, category, tags, topics, and dependencies
+- Created `/src/app/api/github/rewrite-readme/route.ts` — POST endpoint that generates a proposed README based on deep analysis data (code signature, dependencies, tags, topics, etc.)
+- Updated `/src/app/api/github/projects/route.ts` — Now parses all deep analysis JSON fields (fileTree, dependencies, keyFiles, similarProjects, codeSignature) from DB strings to proper objects
+- Enhanced `/src/components/detail-panel.tsx` — Added 6 new sections:
+  1. Deep Summary with "Code-Verified" badge (or "Deep Analyze This Repo" button)
+  2. Code Signature (frameworks, patterns, architecture badges)
+  3. File Tree (collapsible tree view with folder/file icons, load-on-demand)
+  4. Dependencies (categorized view with runtime/dev filter, "Also in N other projects" badges)
+  5. Similar Projects (cards with score, reason, click to navigate)
+  6. Proposed README (tabbed view: Generated vs Original, "Generate Accurate README" button)
+- Updated `/src/components/cockpit-dashboard.tsx`:
+  - Added "Deep Analyze All" button in header (with spinner + progress)
+  - Added timeline view toggle (Calendar icon) in view mode selector
+  - Added deep analyzed count in stats bar
+  - Added deep analysis indicator icons in activity feed and card strip
+- Enhanced `/src/components/project-graph.tsx`:
+  - Added dependency edges (blue dashed lines for shared deps ≥ 3)
+  - Added zoom/pan (mouse wheel zoom + background drag pan)
+  - Added minimap in top-right corner showing overall graph position + viewport outline
+  - Added edge legend (Tags / Deps) below minimap
+  - Added zoom percentage indicator
+- Created `/src/components/timeline-view.tsx` — SVG-based horizontal timeline showing projects as bars from creation to last push, color-coded by category, with "Today" vertical line and month grid markers
+- Updated `/src/app/page.tsx` — No changes needed, deep fields already handled by API deserialization
+
+Stage Summary:
+- All 7 sub-tasks completed
+- 4 new API routes created for deep analysis features
+- Detail panel significantly enhanced with 6 new interactive sections
+- Graph enhanced with dependency edges, zoom/pan, and minimap
+- Timeline view added as third visualization option
+- Lint passes cleanly with 0 errors
+- All deep analysis fields properly deserialized from JSON strings in DB
+
+---
+Task ID: 6
+Agent: Main
+Task: Fix deep-analyze API + enhance features + styling polish
+
+Work Log:
+- Fixed `/src/app/api/github/deep-analyze/route.ts` — Replaced `process.env.GITHUB_PAT` with proper `GITHUB_HEADERS` import from `@/lib/github-token`
+- Fixed deep-analyze to use `z-ai-web-dev-sdk` LLM for generating deep summaries based on actual code reading (not just heuristics)
+- Enhanced deep-analyze to read actual source files via GitHub Contents API (entry points, configs, build files)
+- Added detection for more frameworks: FastAPI, Flask, Django, Click, Typer, Rich, Pydantic, SQLAlchemy, LangChain, OpenAI SDK, Anthropic SDK, Tokio, Actix, Axum
+- Added detection for more patterns: MCP, AI/LLM, CLI
+- Added Python pyproject.toml parsing for dependencies
+- Updated `/src/app/api/github/smart-search/route.ts` — Now includes deepSummary, codeSignature, and dependencies for much better project matching
+- Smart search now references specific features found in the deep summary when explaining matches
+- Updated `/src/components/cockpit-dashboard.tsx`:
+  - Added "Rewrite All READMEs" button (violet) with batch README generation
+  - Added keyboard shortcuts: `/` for smart search, `⌘1/2/3` for views, `?` for help, `Esc` to close
+  - Added keyboard shortcuts overlay (modal with all shortcuts listed)
+  - Enhanced search filter to include deepSummary, codeSignature frameworks/patterns/architecture, and dependency names
+  - Added README rewrite progress indicator in stats bar
+- Tested deep analysis on ComfyWatchman repo — LLM read actual code and produced honest assessment
+- Tested README generation — produced accurate, code-based README that honestly describes alpha status
+- All features verified working via agent-browser QA
+
+Stage Summary:
+- Deep analysis now uses actual code reading (file trees, source files, dependencies) via GitHub API + PAT
+- LLM generates honest, code-verified summaries — not aspirational descriptions
+- README rewriter generates accurate documentation based on actual code
+- Smart search leverages deep analysis data for better matching
+- Keyboard shortcuts added for power users
+- Batch README rewriting for all deep-analyzed repos
+- Search now includes frameworks, patterns, architecture, and dependency names
+
+## Current Project Status
+- **Deep Analysis**: Reads actual source code from GitHub repos, generates honest LLM summaries
+- **File Trees**: Fetched and cached from GitHub Trees API, displayed as collapsible tree view
+- **Dependencies**: Parsed from package.json/requirements.txt/Cargo.toml/pyproject.toml
+- **Similar Projects**: Computed based on shared language, tags, deps, frameworks
+- **README Rewriter**: Generates accurate READMEs based on actual code, not aspirational docs
+- **Smart Search**: "Do I already have X?" now uses deep analysis data for better matching
+- **Timeline View**: Horizontal timeline showing project lifespans
+- **Graph**: Force-directed with dependency edges, zoom/pan, minimap
+- **Keyboard Shortcuts**: /, ⌘1/2/3, ?, Esc
+- **28 repos** loaded for user Coldaine
+
+## Unresolved / Next Steps
+- Mobile responsiveness improvements
+- Better graph clustering (group by category/framework)
+- Export/compare feature (diff two projects' dependencies)
+- "Agentic memory" phase: auto-suggest existing tools when user describes a need in real-time
+- Push proposed READMEs back to GitHub (requires write permissions)
+- Org-level analysis (ProjectBroadside repos not yet deep-analyzed)
+- Add commit history analysis for each project

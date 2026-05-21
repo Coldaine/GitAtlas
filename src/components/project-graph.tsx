@@ -20,6 +20,7 @@ interface Edge {
   source: string;
   target: string;
   weight: number;
+  type: 'tag' | 'dependency';
 }
 
 interface ProjectGraphProps {
@@ -32,6 +33,7 @@ const nodePositionCache = new Map<string, { x: number; y: number }>();
 export function ProjectGraph({ projects }: ProjectGraphProps) {
   const { setSelectedProject, activeTags } = useAtlasStore();
   const svgRef = useRef<SVGSVGElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes] = useState<NodePosition[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
@@ -43,6 +45,15 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const initializedRef = useRef(false);
   const edgesRef = useRef<Edge[]>([]);
+
+  // Zoom/pan state
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const isPanningRef = useRef(false);
+  const panStartRef = useRef({ x: 0, y: 0 });
+  const panOffsetRef = useRef({ x: 0, y: 0 });
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
 
   const nodeSize = useCallback((p: Project) => {
     const base = 10;
@@ -57,18 +68,30 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     return '#64748b';
   }, []);
 
-  // Build edges from projects
+  // Build edges from projects (both tag-based and dependency-based)
   const computedEdges = useMemo(() => {
     const newEdges: Edge[] = [];
     for (let i = 0; i < projects.length; i++) {
       for (let j = i + 1; j < projects.length; j++) {
         const a = projects[i];
         const b = projects[j];
+
+        // Tag-based edges
         const aTags = new Set([...a.tags, ...a.topics, a.language].filter(Boolean));
         const bTags = new Set([...b.tags, ...b.topics, b.language].filter(Boolean));
         const shared = [...aTags].filter((t) => bTags.has(t));
         if (shared.length >= 2) {
-          newEdges.push({ source: a.id, target: b.id, weight: shared.length });
+          newEdges.push({ source: a.id, target: b.id, weight: shared.length, type: 'tag' });
+        }
+
+        // Dependency-based edges
+        if (a.dependencies && b.dependencies) {
+          const aAll = [...(a.dependencies.runtime || []), ...(a.dependencies.dev || [])];
+          const bAll = [...(b.dependencies.runtime || []), ...(b.dependencies.dev || [])];
+          const sharedDeps = aAll.filter(d => bAll.includes(d));
+          if (sharedDeps.length >= 3) {
+            newEdges.push({ source: a.id, target: b.id, weight: sharedDeps.length, type: 'dependency' });
+          }
         }
       }
     }
@@ -77,15 +100,15 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
 
   // Resize observer
   useEffect(() => {
-    const svg = svgRef.current;
-    if (!svg) return;
+    const container = containerRef.current;
+    if (!container) return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
         setDimensions({ width: Math.max(400, width), height: Math.max(300, height) });
       }
     });
-    observer.observe(svg.parentElement || svg);
+    observer.observe(container);
     return () => observer.disconnect();
   }, []);
 
@@ -160,8 +183,9 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         const dx = target.x - source.x;
         const dy = target.y - source.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const idealDist = 130;
-        const force = (dist - idealDist) * attractionStrength * edge.weight;
+        const idealDist = edge.type === 'dependency' ? 100 : 130;
+        const strength = edge.type === 'dependency' ? attractionStrength * 1.5 : attractionStrength;
+        const force = (dist - idealDist) * strength * edge.weight;
         const fx = (dx / dist) * force;
         const fy = (dy / dist) * force;
         source.vx += fx;
@@ -197,26 +221,54 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     return () => cancelAnimationFrame(animRef.current);
   }, [dimensions]);
 
+  // Zoom with wheel
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(0.3, Math.min(3, zoomRef.current * delta));
+    zoomRef.current = newZoom;
+    setZoom(newZoom);
+  }, []);
+
+  // Pan with background drag
+  const handleBgMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    // Only pan if clicking the background (not a node)
+    if ((e.target as SVGElement).closest('.graph-node')) return;
+    isPanningRef.current = true;
+    panStartRef.current = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y };
+  }, []);
+
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<SVGSVGElement>) => {
       const svg = svgRef.current;
       if (!svg) return;
       const rect = svg.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      setMousePos({ x, y });
+
+      // Transform mouse coordinates to SVG space
+      const svgX = (e.clientX - rect.left - panRef.current.x) / zoomRef.current;
+      const svgY = (e.clientY - rect.top - panRef.current.y) / zoomRef.current;
+      setMousePos({ x: svgX, y: svgY });
+
+      if (isPanningRef.current) {
+        const newPan = {
+          x: e.clientX - panStartRef.current.x,
+          y: e.clientY - panStartRef.current.y,
+        };
+        panRef.current = newPan;
+        setPan(newPan);
+      }
 
       if (draggingRef.current) {
         const node = nodesRef.current.find((n) => n.id === draggingRef.current);
         if (node) {
-          node.x = x + dragOffsetRef.current.x;
-          node.y = y + dragOffsetRef.current.y;
+          node.x = svgX + dragOffsetRef.current.x;
+          node.y = svgY + dragOffsetRef.current.y;
           node.vx = 0;
           node.vy = 0;
         }
       }
     },
-    []
+    [zoom]
   );
 
   const handleMouseDown = useCallback(
@@ -225,14 +277,18 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
       const node = nodesRef.current.find((n) => n.id === nodeId);
       if (node) {
         draggingRef.current = nodeId;
-        dragOffsetRef.current = { x: node.x - mousePos.x, y: node.y - mousePos.y };
+        const rect = svgRef.current?.getBoundingClientRect();
+        const svgX = rect ? (e.clientX - rect.left - panRef.current.x) / zoomRef.current : e.clientX;
+        const svgY = rect ? (e.clientY - rect.top - panRef.current.y) / zoomRef.current : e.clientY;
+        dragOffsetRef.current = { x: node.x - svgX, y: node.y - svgY };
       }
     },
-    [mousePos]
+    [zoom]
   );
 
   const handleMouseUp = useCallback(() => {
     draggingRef.current = null;
+    isPanningRef.current = false;
   }, []);
 
   const isNodeDimmed = useCallback(
@@ -265,6 +321,11 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     return map[cat] || '●';
   }, []);
 
+  // Minimap dimensions
+  const minimapWidth = 120;
+  const minimapHeight = 80;
+  const minimapPadding = 8;
+
   if (projects.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
@@ -274,7 +335,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
   }
 
   return (
-    <div className="flex-1 relative overflow-hidden">
+    <div ref={containerRef} className="flex-1 relative overflow-hidden">
       <svg
         ref={svgRef}
         width={dimensions.width}
@@ -283,6 +344,9 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
+        onMouseDown={handleBgMouseDown}
+        onWheel={handleWheel}
+        style={{ touchAction: 'none' }}
       >
         <defs>
           <filter id="glow">
@@ -310,143 +374,270 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         </pattern>
         <rect width="100%" height="100%" fill="url(#grid)" />
 
-        {/* Edges */}
-        {edges.map((edge, i) => {
-          const source = nodes.find((n) => n.id === edge.source);
-          const target = nodes.find((n) => n.id === edge.target);
-          if (!source || !target) return null;
+        {/* Main graph group with zoom/pan transform */}
+        <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+          {/* Edges */}
+          {edges.map((edge, i) => {
+            const source = nodes.find((n) => n.id === edge.source);
+            const target = nodes.find((n) => n.id === edge.target);
+            if (!source || !target) return null;
 
-          const isHighlighted = hoveredNode && (edge.source === hoveredNode || edge.target === hoveredNode);
-          const opacity = isHighlighted ? 0.6 : 0.06;
+            const isHighlighted = hoveredNode && (edge.source === hoveredNode || edge.target === hoveredNode);
+            const isDependency = edge.type === 'dependency';
 
-          return (
-            <line
-              key={`edge-${i}`}
-              x1={source.x}
-              y1={source.y}
-              x2={target.x}
-              y2={target.y}
-              stroke={isHighlighted ? '#10b981' : '#ffffff'}
-              strokeWidth={isHighlighted ? Math.min(edge.weight * 1, 3) : 0.5}
-              opacity={opacity}
-              style={{ transition: 'opacity 0.3s, stroke-width 0.3s' }}
-            />
-          );
-        })}
+            const baseColor = isDependency ? '#3b82f6' : '#ffffff';
+            const highlightColor = isDependency ? '#60a5fa' : '#10b981';
+            const color = isHighlighted ? highlightColor : baseColor;
+            const opacity = isHighlighted ? 0.6 : isDependency ? 0.08 : 0.06;
 
-        {/* Nodes */}
-        {nodes.map((node) => {
-          const isHovered = hoveredNode === node.id;
-          const isConnected = connectedNodes.has(node.id);
-          const dimmed = isNodeDimmed(node);
-          const opacity = dimmed ? 0.12 : isHovered ? 1 : isConnected && hoveredNode ? 0.85 : 0.65;
-
-          return (
-            <g
-              key={node.id}
-              onMouseEnter={() => setHoveredNode(node.id)}
-              onMouseLeave={() => setHoveredNode(null)}
-              onMouseDown={(e) => handleMouseDown(node.id, e)}
-              onClick={() => setSelectedProject(node.project)}
-              style={{ cursor: 'pointer', transition: 'opacity 0.3s' }}
-              opacity={opacity}
-            >
-              {/* Outer glow ring on hover */}
-              {isHovered && (
-                <>
-                  <circle
-                    cx={node.x}
-                    cy={node.y}
-                    r={node.radius + 10}
-                    fill="none"
-                    stroke={node.color}
-                    strokeWidth={1.5}
-                    opacity={0.2}
-                    filter="url(#strongGlow)"
-                  />
-                  <circle
-                    cx={node.x}
-                    cy={node.y}
-                    r={node.radius + 5}
-                    fill="none"
-                    stroke={node.color}
-                    strokeWidth={2}
-                    opacity={0.4}
-                  />
-                </>
-              )}
-
-              {/* Shadow */}
-              <circle
-                cx={node.x + 2}
-                cy={node.y + 2}
-                r={isHovered ? node.radius + 2 : node.radius}
-                fill="rgba(0,0,0,0.3)"
+            return (
+              <line
+                key={`edge-${i}`}
+                x1={source.x}
+                y1={source.y}
+                x2={target.x}
+                y2={target.y}
+                stroke={color}
+                strokeWidth={isHighlighted ? Math.min(edge.weight * 1, 3) : isDependency ? 1 : 0.5}
+                opacity={opacity}
+                strokeDasharray={isDependency && !isHighlighted ? '4 4' : undefined}
+                style={{ transition: 'opacity 0.3s, stroke-width 0.3s' }}
               />
+            );
+          })}
 
-              {/* Main circle */}
-              <circle
-                cx={node.x}
-                cy={node.y}
-                r={isHovered ? node.radius + 2 : node.radius}
-                fill={node.color}
-                opacity={isHovered ? 0.95 : 0.7}
-                filter={isHovered ? 'url(#glow)' : undefined}
-                stroke={isHovered ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)'}
-                strokeWidth={isHovered ? 2 : 1}
-              />
+          {/* Nodes */}
+          {nodes.map((node) => {
+            const isHovered = hoveredNode === node.id;
+            const isConnected = connectedNodes.has(node.id);
+            const dimmed = isNodeDimmed(node);
+            const opacity = dimmed ? 0.12 : isHovered ? 1 : isConnected && hoveredNode ? 0.85 : 0.65;
 
-              {/* Category icon in center for larger nodes */}
-              {node.radius >= 12 && (
+            return (
+              <g
+                key={node.id}
+                className="graph-node"
+                onMouseEnter={() => setHoveredNode(node.id)}
+                onMouseLeave={() => setHoveredNode(null)}
+                onMouseDown={(e) => handleMouseDown(node.id, e)}
+                onClick={() => setSelectedProject(node.project)}
+                style={{ cursor: 'pointer', transition: 'opacity 0.3s' }}
+                opacity={opacity}
+              >
+                {/* Outer glow ring on hover */}
+                {isHovered && (
+                  <>
+                    <circle
+                      cx={node.x}
+                      cy={node.y}
+                      r={node.radius + 10}
+                      fill="none"
+                      stroke={node.color}
+                      strokeWidth={1.5}
+                      opacity={0.2}
+                      filter="url(#strongGlow)"
+                    />
+                    <circle
+                      cx={node.x}
+                      cy={node.y}
+                      r={node.radius + 5}
+                      fill="none"
+                      stroke={node.color}
+                      strokeWidth={2}
+                      opacity={0.4}
+                    />
+                  </>
+                )}
+
+                {/* Shadow */}
+                <circle
+                  cx={node.x + 2}
+                  cy={node.y + 2}
+                  r={isHovered ? node.radius + 2 : node.radius}
+                  fill="rgba(0,0,0,0.3)"
+                />
+
+                {/* Main circle */}
+                <circle
+                  cx={node.x}
+                  cy={node.y}
+                  r={isHovered ? node.radius + 2 : node.radius}
+                  fill={node.color}
+                  opacity={isHovered ? 0.95 : 0.7}
+                  filter={isHovered ? 'url(#glow)' : undefined}
+                  stroke={isHovered ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.08)'}
+                  strokeWidth={isHovered ? 2 : 1}
+                />
+
+                {/* Category icon in center for larger nodes */}
+                {node.radius >= 12 && (
+                  <text
+                    x={node.x}
+                    y={node.y + 1}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize={node.radius * 0.7}
+                    className="pointer-events-none select-none"
+                  >
+                    {categoryIcon(node.project.category)}
+                  </text>
+                )}
+
+                {/* Label */}
                 <text
                   x={node.x}
-                  y={node.y + 1}
+                  y={node.y + node.radius + 15}
                   textAnchor="middle"
-                  dominantBaseline="central"
-                  fontSize={node.radius * 0.7}
+                  fill={isHovered ? '#e2e8f0' : '#94a3b8'}
+                  fontSize={isHovered ? 11 : 9}
+                  fontWeight={isHovered ? '600' : '400'}
                   className="pointer-events-none select-none"
+                  style={{ fontFamily: 'var(--font-geist-sans)' }}
                 >
-                  {categoryIcon(node.project.category)}
+                  {node.project.name.length > 18 ? node.project.name.slice(0, 16) + '…' : node.project.name}
                 </text>
-              )}
 
-              {/* Label */}
-              <text
-                x={node.x}
-                y={node.y + node.radius + 15}
-                textAnchor="middle"
-                fill={isHovered ? '#e2e8f0' : '#94a3b8'}
-                fontSize={isHovered ? 11 : 9}
-                fontWeight={isHovered ? '600' : '400'}
-                className="pointer-events-none select-none"
-                style={{ fontFamily: 'var(--font-geist-sans)' }}
-              >
-                {node.project.name.length > 18 ? node.project.name.slice(0, 16) + '…' : node.project.name}
-              </text>
+                {/* Activity indicator - small dot for recently active */}
+                {node.project.pushedAt && (Date.now() - new Date(node.project.pushedAt).getTime() < 7 * 24 * 60 * 60 * 1000) && (
+                  <circle
+                    cx={node.x + node.radius * 0.65}
+                    cy={node.y - node.radius * 0.65}
+                    r={3}
+                    fill="#10b981"
+                    stroke="#0a0a0a"
+                    strokeWidth={1.5}
+                    className="pointer-events-none"
+                  />
+                )}
+              </g>
+            );
+          })}
+        </g>
 
-              {/* Activity indicator - small dot for recently active */}
-              {node.project.pushedAt && (Date.now() - new Date(node.project.pushedAt).getTime() < 7 * 24 * 60 * 60 * 1000) && (
-                <circle
-                  cx={node.x + node.radius * 0.65}
-                  cy={node.y - node.radius * 0.65}
-                  r={3}
-                  fill="#10b981"
-                  stroke="#0a0a0a"
-                  strokeWidth={1.5}
-                  className="pointer-events-none"
+        {/* Minimap */}
+        <g>
+          {/* Minimap background */}
+          <rect
+            x={dimensions.width - minimapWidth - minimapPadding}
+            y={minimapPadding}
+            width={minimapWidth}
+            height={minimapHeight}
+            rx={4}
+            fill="rgba(10,10,10,0.8)"
+            stroke="rgba(255,255,255,0.1)"
+            strokeWidth={1}
+          />
+
+          {/* Minimap viewport rectangle */}
+          {(() => {
+            const scaleX = minimapWidth / dimensions.width;
+            const scaleY = minimapHeight / dimensions.height;
+            const scale = Math.min(scaleX, scaleY) * 0.9;
+            const offsetX = dimensions.width - minimapWidth - minimapPadding + (minimapWidth - dimensions.width * scale) / 2;
+            const offsetY = minimapPadding + (minimapHeight - dimensions.height * scale) / 2;
+
+            // Viewport rect
+            const vpX = offsetX + (-pan.x / zoom) * scale;
+            const vpY = offsetY + (-pan.y / zoom) * scale;
+            const vpW = (dimensions.width / zoom) * scale;
+            const vpH = (dimensions.height / zoom) * scale;
+
+            return (
+              <>
+                {/* Minimap nodes */}
+                {nodes.map(node => {
+                  const mx = offsetX + node.x * scale;
+                  const my = offsetY + node.y * scale;
+                  const mr = Math.max(1.5, node.radius * scale * 0.5);
+                  const dimmed = isNodeDimmed(node);
+                  return (
+                    <circle
+                      key={`mini-${node.id}`}
+                      cx={mx}
+                      cy={my}
+                      r={mr}
+                      fill={node.color}
+                      opacity={dimmed ? 0.15 : 0.5}
+                      className="pointer-events-none"
+                    />
+                  );
+                })}
+                {/* Viewport outline */}
+                <rect
+                  x={vpX}
+                  y={vpY}
+                  width={vpW}
+                  height={vpH}
+                  fill="none"
+                  stroke="rgba(16,185,129,0.5)"
+                  strokeWidth={1}
+                  rx={1}
                 />
-              )}
-            </g>
-          );
-        })}
+              </>
+            );
+          })()}
+        </g>
+
+        {/* Zoom indicator */}
+        <text
+          x={dimensions.width - minimapWidth - minimapPadding}
+          y={minimapPadding + minimapHeight + 14}
+          textAnchor="start"
+          fill="rgba(148,163,184,0.3)"
+          fontSize={9}
+          className="pointer-events-none select-none"
+        >
+          {Math.round(zoom * 100)}%
+        </text>
+
+        {/* Edge legend */}
+        <g>
+          <line
+            x1={dimensions.width - minimapWidth - minimapPadding}
+            y1={minimapPadding + minimapHeight + 22}
+            x2={dimensions.width - minimapWidth - minimapPadding + 15}
+            y2={minimapPadding + minimapHeight + 22}
+            stroke="#ffffff"
+            strokeWidth={0.5}
+            opacity={0.3}
+          />
+          <text
+            x={dimensions.width - minimapWidth - minimapPadding + 19}
+            y={minimapPadding + minimapHeight + 25}
+            fill="rgba(148,163,184,0.3)"
+            fontSize={7}
+            className="pointer-events-none select-none"
+          >
+            Tags
+          </text>
+          <line
+            x1={dimensions.width - minimapWidth - minimapPadding}
+            y1={minimapPadding + minimapHeight + 32}
+            x2={dimensions.width - minimapWidth - minimapPadding + 15}
+            y2={minimapPadding + minimapHeight + 32}
+            stroke="#3b82f6"
+            strokeWidth={1}
+            opacity={0.4}
+            strokeDasharray="4 4"
+          />
+          <text
+            x={dimensions.width - minimapWidth - minimapPadding + 19}
+            y={minimapPadding + minimapHeight + 35}
+            fill="rgba(148,163,184,0.3)"
+            fontSize={7}
+            className="pointer-events-none select-none"
+          >
+            Deps
+          </text>
+        </g>
       </svg>
 
       {/* Hover card */}
       {hoveredNode && (
         <ProjectHoverCard
           project={nodes.find((n) => n.id === hoveredNode)?.project}
-          x={mousePos.x}
-          y={mousePos.y}
+          x={mousePos.x * zoom + pan.x}
+          y={mousePos.y * zoom + pan.y}
         />
       )}
     </div>

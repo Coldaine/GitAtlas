@@ -18,19 +18,35 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ results: [], message: 'No projects found for this user' });
     }
 
-    // Build context for LLM
-    const projectList = projects.map((p) => ({
-      id: p.id,
-      name: p.name,
-      fullName: p.fullName,
-      description: p.description,
-      language: p.language,
-      summary: p.summary,
-      tags: p.tags,
-      category: p.category,
-      topics: p.topics,
-      stargazersCount: p.stargazersCount,
-    }));
+    // Build context for LLM — include deep analysis data for better matching
+    const projectList = projects.map((p) => {
+      let codeSignature: any = null;
+      let dependencies: any = null;
+      try {
+        if (p.codeSignature) codeSignature = JSON.parse(p.codeSignature);
+      } catch { /* ignore */ }
+      try {
+        if (p.dependencies) dependencies = JSON.parse(p.dependencies);
+      } catch { /* ignore */ }
+
+      return {
+        id: p.id,
+        name: p.name,
+        fullName: p.fullName,
+        description: p.description,
+        language: p.language,
+        summary: p.summary,
+        deepSummary: p.deepSummary,  // Much richer — based on actual code reading
+        tags: p.tags,
+        category: p.category,
+        topics: p.topics,
+        stargazersCount: p.stargazersCount,
+        codeSignature,  // Frameworks, patterns, architecture
+        dependencies,   // Actual runtime/dev deps
+        isFork: p.isFork,
+        isArchived: p.isArchived,
+      };
+    });
 
     const zai = await ZAI.create();
 
@@ -40,14 +56,16 @@ export async function POST(request: NextRequest) {
           role: 'system',
           content: `You are a project matching assistant. Given a user's need/description and their list of projects, find which existing projects could fulfill that need or are closely related.
 
+Use ALL available data: descriptions, summaries, deep summaries (which are based on actual code reading), code signatures (detected frameworks and patterns), and dependencies. This gives you a much richer understanding of what each project ACTUALLY does.
+
 Return a JSON array of matches, each with:
 - id: the project id
 - name: the project name
 - relevanceScore: 0-100 (how well it matches)
-- reason: 1 sentence explaining why this project is relevant
+- reason: 1-2 sentences explaining why this project is relevant, referencing specific features if the deep summary reveals them
 - howToUse: 1 sentence suggesting how to use this project for the described need
 
-Sort by relevanceScore descending. Include ALL projects that are even partially relevant (score > 30). Be generous - the user forgets what they have.
+Sort by relevanceScore descending. Include ALL projects that are even partially relevant (score > 25). Be generous - the user forgets what they have. If a project seems unfinished but still relevant, mention that.
 
 Respond with ONLY the JSON array, no other text.`,
         },
@@ -71,6 +89,11 @@ Respond with ONLY the JSON array, no other text.`,
         ...project,
         topics: project.topics ? project.topics.split(',').filter(Boolean) : [],
         tags: project.tags ? project.tags.split(',').filter(Boolean) : [],
+        fileTree: project.fileTree ? JSON.parse(project.fileTree) : null,
+        dependencies: project.dependencies ? JSON.parse(project.dependencies) : null,
+        codeSignature: project.codeSignature ? JSON.parse(project.codeSignature) : null,
+        similarProjects: project.similarProjects ? JSON.parse(project.similarProjects) : null,
+        keyFiles: project.keyFiles ? JSON.parse(project.keyFiles) : null,
         relevanceScore: match.relevanceScore || 50,
         reason: match.reason || '',
         howToUse: match.howToUse || '',

@@ -4,6 +4,7 @@ import { useAtlasStore } from '@/lib/store';
 import { CATEGORY_COLORS, LANGUAGE_COLORS } from '@/lib/types';
 import { ProjectGraph } from '@/components/project-graph';
 import { ProjectGrid } from '@/components/project-grid';
+import { TimelineView } from '@/components/timeline-view';
 import { DetailPanel } from '@/components/detail-panel';
 import { SmartSearchDialog } from '@/components/smart-search-dialog';
 import { Badge } from '@/components/ui/badge';
@@ -16,19 +17,62 @@ import {
   Sparkles, Star, GitFork, Activity, Zap, Search,
   Network, LayoutGrid, Flame, Clock, Loader2,
   FolderOpen, Code2, ChevronRight, X,
+  Microscope, Calendar, FileText, Keyboard,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 
 export function CockpitDashboard() {
   const {
     username, projects, isLoading, isAnalyzing, viewMode,
     selectedProject, searchQuery, activeTags, analyzeProgress,
     setViewMode, setSelectedProject, setSearchQuery, toggleTag, setActiveTags,
+    setProjects, isDeepAnalyzing, deepAnalyzeProgress,
+    setDeepAnalyzing, setDeepAnalyzeProgress, updateProject,
   } = useAtlasStore();
 
   const [smartSearchOpen, setSmartSearchOpen] = useState(false);
   const [showDetailGrid, setShowDetailGrid] = useState(false);
+  const [deepAnalyzeCount, setDeepAnalyzeCount] = useState(0);
+  const [isRewritingReadmes, setIsRewritingReadmes] = useState(false);
+  const [readmeProgress, setReadmeProgress] = useState('');
+  const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts when typing in inputs
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+
+      if (e.key === '/' && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        setSmartSearchOpen(true);
+      }
+      if (e.key === 'Escape') {
+        setSmartSearchOpen(false);
+        setShowKeyboardHelp(false);
+      }
+      if (e.key === '1' && e.metaKey) {
+        e.preventDefault();
+        setViewMode('graph');
+      }
+      if (e.key === '2' && e.metaKey) {
+        e.preventDefault();
+        setViewMode('grid');
+      }
+      if (e.key === '3' && e.metaKey) {
+        e.preventDefault();
+        setViewMode('timeline');
+      }
+      if (e.key === '?' && e.shiftKey) {
+        e.preventDefault();
+        setShowKeyboardHelp(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setViewMode]);
 
   // Computed data
   const totalStars = useMemo(() => projects.reduce((s, p) => s + p.stargazersCount, 0), [projects]);
@@ -37,6 +81,7 @@ export function CockpitDashboard() {
     projects.filter(p => p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() < 30 * 24 * 60 * 60 * 1000)).length,
     [projects]
   );
+  const deepAnalyzedCount = useMemo(() => projects.filter(p => p.deepAnalyzedAt).length, [projects]);
 
   // Language chart data
   const langData = useMemo(() => {
@@ -98,13 +143,19 @@ export function CockpitDashboard() {
     [projects]
   );
 
-  // Filtered projects
+  // Filtered projects — include deep analysis data in search
   const filteredProjects = useMemo(() => {
     return projects.filter(p => {
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
-        const searchable = [p.name, p.fullName, p.description, p.summary, p.language, ...p.tags, ...p.topics]
-          .filter(Boolean).join(' ').toLowerCase();
+        const searchable = [
+          p.name, p.fullName, p.description, p.summary, p.deepSummary, p.language,
+          ...p.tags, ...p.topics,
+          ...(p.codeSignature?.frameworks || []),
+          ...(p.codeSignature?.patterns || []),
+          p.codeSignature?.architecture || '',
+          ...(p.dependencies?.runtime || []),
+        ].filter(Boolean).join(' ').toLowerCase();
         if (!searchable.includes(q)) return false;
       }
       if (activeTags.length > 0) {
@@ -115,6 +166,88 @@ export function CockpitDashboard() {
       return true;
     });
   }, [projects, searchQuery, activeTags]);
+
+  // Batch Rewrite READMEs handler
+  const handleBatchRewriteReadmes = useCallback(async () => {
+    if (isRewritingReadmes) return;
+    const deepAnalyzedProjects = projects.filter(p => p.deepAnalyzedAt && !p.proposedReadme);
+    if (deepAnalyzedProjects.length === 0) {
+      setReadmeProgress('No eligible projects (need deep analysis first)');
+      setTimeout(() => setReadmeProgress(''), 3000);
+      return;
+    }
+    setIsRewritingReadmes(true);
+    setReadmeProgress(`Generating READMEs for ${deepAnalyzedProjects.length} repos...`);
+
+    let completed = 0;
+    for (const project of deepAnalyzedProjects) {
+      try {
+        const res = await fetch('/api/github/rewrite-readme', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: project.id }),
+        });
+        if (res.ok) {
+          completed++;
+          setReadmeProgress(`Generated ${completed}/${deepAnalyzedProjects.length} READMEs`);
+        }
+      } catch { /* skip failed */ }
+      // Small delay to avoid overwhelming the API
+      await new Promise(r => setTimeout(r, 500));
+    }
+
+    // Refresh projects
+    const projectsRes = await fetch(`/api/github/projects?username=${username}`);
+    if (projectsRes.ok) {
+      const projectsData = await projectsRes.json();
+      setProjects(projectsData.projects || []);
+    }
+
+    setIsRewritingReadmes(false);
+    setReadmeProgress(`Done! Generated ${completed} READMEs`);
+    setTimeout(() => setReadmeProgress(''), 5000);
+  }, [isRewritingReadmes, projects, username, setProjects]);
+
+  // Deep Analyze All handler
+  const handleDeepAnalyzeAll = useCallback(async () => {
+    if (isDeepAnalyzing) return;
+    setDeepAnalyzing(true);
+    setDeepAnalyzeCount(0);
+    const totalToAnalyze = projects.length;
+    setDeepAnalyzeProgress(`Starting deep analysis of ${totalToAnalyze} repos...`);
+
+    try {
+      const res = await fetch('/api/github/deep-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setDeepAnalyzeCount(data.results?.length || totalToAnalyze);
+        setDeepAnalyzeProgress(`Deep analyzed ${data.results?.length || totalToAnalyze} repos`);
+
+        // Refresh all projects
+        const projectsRes = await fetch(`/api/github/projects?username=${username}`);
+        if (projectsRes.ok) {
+          const projectsData = await projectsRes.json();
+          setProjects(projectsData.projects || []);
+        }
+      } else {
+        setDeepAnalyzeProgress('Deep analysis failed');
+      }
+    } catch (err) {
+      console.error('Deep analyze all error:', err);
+      setDeepAnalyzeProgress('Deep analysis failed');
+    } finally {
+      setDeepAnalyzing(false);
+      setTimeout(() => {
+        setDeepAnalyzeProgress('');
+        setDeepAnalyzeCount(0);
+      }, 5000);
+    }
+  }, [isDeepAnalyzing, projects.length, username, setDeepAnalyzing, setDeepAnalyzeProgress, setProjects]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
@@ -137,11 +270,33 @@ export function CockpitDashboard() {
           <GitFork className="w-3 h-3 text-blue-400" />{totalForks}
           <span className="text-muted-foreground/30">•</span>
           <Activity className="w-3 h-3 text-emerald-400" />{recentlyActive} active
+          {deepAnalyzedCount > 0 && (
+            <>
+              <span className="text-muted-foreground/30">•</span>
+              <Microscope className="w-3 h-3 text-emerald-400" />{deepAnalyzedCount} deep
+            </>
+          )}
           {isAnalyzing && (
             <>
               <span className="text-muted-foreground/30">•</span>
               <span className="text-amber-400 animate-pulse flex items-center gap-1">
                 <Loader2 className="w-3 h-3 animate-spin" /> {analyzeProgress}
+              </span>
+            </>
+          )}
+          {isDeepAnalyzing && (
+            <>
+              <span className="text-muted-foreground/30">•</span>
+              <span className="text-emerald-400 animate-pulse flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" /> {deepAnalyzeProgress}
+              </span>
+            </>
+          )}
+          {isRewritingReadmes && (
+            <>
+              <span className="text-muted-foreground/30">•</span>
+              <span className="text-violet-400 animate-pulse flex items-center gap-1">
+                <Loader2 className="w-3 h-3 animate-spin" /> {readmeProgress}
               </span>
             </>
           )}
@@ -174,19 +329,67 @@ export function CockpitDashboard() {
             <Zap className="w-3 h-3" />Do I have...?
           </Button>
 
+          {/* Deep Analyze All */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDeepAnalyzeAll}
+            disabled={isDeepAnalyzing}
+            className="h-7 gap-1 text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 px-2"
+          >
+            {isDeepAnalyzing ? (
+              <><Loader2 className="w-3 h-3 animate-spin" /> Analyzing...</>
+            ) : (
+              <><Microscope className="w-3 h-3" /> Deep Analyze</>
+            )}
+          </Button>
+
+          {/* Rewrite All READMEs */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleBatchRewriteReadmes}
+            disabled={isRewritingReadmes || isDeepAnalyzing}
+            className="h-7 gap-1 text-xs border-violet-500/30 text-violet-400 hover:bg-violet-500/10 px-2"
+          >
+            {isRewritingReadmes ? (
+              <><Loader2 className="w-3 h-3 animate-spin" /> {readmeProgress}</>
+            ) : (
+              <><FileText className="w-3 h-3" /> Rewrite READMEs</>
+            )}
+          </Button>
+
+          {/* Keyboard help */}
+          <button
+            onClick={() => setShowKeyboardHelp(prev => !prev)}
+            className="h-7 w-7 flex items-center justify-center text-muted-foreground/40 hover:text-foreground/60 rounded transition-colors"
+            title="Keyboard shortcuts"
+          >
+            <Keyboard className="w-3.5 h-3.5" />
+          </button>
+
           {/* View toggle */}
           <div className="flex bg-card/30 rounded border border-border/20 p-0.5">
             <button
               onClick={() => setViewMode('graph')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'graph' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Graph View"
             >
               <Network className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('grid')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'grid' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Grid View"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode('timeline')}
+              className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'timeline' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Timeline View"
+            >
+              <Calendar className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -367,6 +570,8 @@ export function CockpitDashboard() {
             </div>
           ) : viewMode === 'graph' ? (
             <ProjectGraph projects={filteredProjects} />
+          ) : viewMode === 'timeline' ? (
+            <TimelineView projects={filteredProjects} />
           ) : (
             <ProjectGrid projects={filteredProjects} />
           )}
@@ -377,6 +582,7 @@ export function CockpitDashboard() {
               <span>{filteredProjects.length} of {projects.length} projects</span>
               {activeTags.length > 0 && <span>Filtered by {activeTags.length} tags</span>}
               {searchQuery && <span>Matching &quot;{searchQuery}&quot;</span>}
+              {deepAnalyzedCount > 0 && <span>{deepAnalyzedCount} deep analyzed</span>}
             </div>
           )}
         </div>
@@ -424,6 +630,9 @@ export function CockpitDashboard() {
                               <Clock className="w-2.5 h-2.5" />
                               {formatDistanceToNow(new Date(p.pushedAt), { addSuffix: true })}
                             </span>
+                          )}
+                          {p.deepAnalyzedAt && (
+                            <Microscope className="w-2.5 h-2.5 text-emerald-400/50" />
                           )}
                         </div>
                       </div>
@@ -478,6 +687,9 @@ export function CockpitDashboard() {
                       <div className="flex items-center gap-2 mb-1.5">
                         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: catColor }} />
                         <span className="text-xs font-semibold truncate flex-1">{p.name}</span>
+                        {p.deepAnalyzedAt && (
+                          <Microscope className="w-3 h-3 text-emerald-400/40" />
+                        )}
                       </div>
                       {p.summary ? (
                         <p className="text-[10px] text-muted-foreground/60 line-clamp-2 leading-tight mb-1.5">{p.summary}</p>
@@ -519,6 +731,52 @@ export function CockpitDashboard() {
 
       {/* Smart search dialog */}
       <SmartSearchDialog open={smartSearchOpen} onOpenChange={setSmartSearchOpen} username={username} />
+
+      {/* Keyboard shortcuts overlay */}
+      <AnimatePresence>
+        {showKeyboardHelp && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center"
+            onClick={() => setShowKeyboardHelp(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-card/95 border border-border/30 rounded-xl p-6 max-w-sm shadow-2xl"
+              onClick={e => e.stopPropagation()}
+            >
+              <h3 className="text-sm font-bold text-foreground/90 mb-4 flex items-center gap-2">
+                <Keyboard className="w-4 h-4 text-emerald-400" />
+                Keyboard Shortcuts
+              </h3>
+              <div className="space-y-2.5 text-xs">
+                <ShortcutItem keys="/" description="Open &quot;Do I have...?&quot; search" />
+                <ShortcutItem keys="⌘1" description="Graph view" />
+                <ShortcutItem keys="⌘2" description="Grid view" />
+                <ShortcutItem keys="⌘3" description="Timeline view" />
+                <ShortcutItem keys="?" description="Show this help" />
+                <ShortcutItem keys="Esc" description="Close dialogs" />
+              </div>
+              <p className="text-[10px] text-muted-foreground/30 mt-4 text-center">Click anywhere to close</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function ShortcutItem({ keys, description }: { keys: string; description: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-muted-foreground/60">{description}</span>
+      <kbd className="px-2 py-0.5 rounded bg-background/50 border border-border/20 text-foreground/50 font-mono text-[10px]">
+        {keys}
+      </kbd>
     </div>
   );
 }

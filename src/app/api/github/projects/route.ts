@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 
+function parseDeepFields(p: any) {
+  return {
+    ...p,
+    topics: p.topics ? p.topics.split(',').filter(Boolean) : [],
+    tags: p.tags ? p.tags.split(',').filter(Boolean) : [],
+    fileTree: p.fileTree ? (typeof p.fileTree === 'string' ? JSON.parse(p.fileTree) : p.fileTree) : null,
+    dependencies: p.dependencies ? (typeof p.dependencies === 'string' ? JSON.parse(p.dependencies) : p.dependencies) : null,
+    keyFiles: p.keyFiles ? (typeof p.keyFiles === 'string' ? JSON.parse(p.keyFiles) : p.keyFiles) : null,
+    similarProjects: p.similarProjects ? (typeof p.similarProjects === 'string' ? JSON.parse(p.similarProjects) : p.similarProjects) : null,
+    codeSignature: p.codeSignature ? (typeof p.codeSignature === 'string' ? JSON.parse(p.codeSignature) : p.codeSignature) : null,
+  };
+}
+
 export async function GET(request: NextRequest) {
   try {
     const username = request.nextUrl.searchParams.get('username');
@@ -23,11 +36,7 @@ export async function GET(request: NextRequest) {
     });
 
     return NextResponse.json({
-      projects: projects.map(p => ({
-        ...p,
-        topics: p.topics ? p.topics.split(',').filter(Boolean) : [],
-        tags: p.tags ? p.tags.split(',').filter(Boolean) : [],
-      })),
+      projects: projects.map(p => parseDeepFields(p)),
       analysisJob,
     });
   } catch (error: any) {

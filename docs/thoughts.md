@@ -24,7 +24,7 @@ This isn't just about GitHub repos. This is about **agentic memory** — having 
 
 ## Longer-Term Vision
 
-1. **Phase 1 (Now):** Static but interactive visualization based on GitHub API data + AI summaries
-2. **Phase 2:** README rewriting based on actual code analysis
-3. **Phase 3:** Living system that updates when repos change, surfaces "you already have X" when you describe a need
-4. **Phase 4:** The "agentic memory" — when you think "I need a tool for Y", this system says "you already built something similar, here it is"
+1. **Phase 1 (DONE):** Static but interactive visualization based on GitHub API data + AI summaries
+2. **Phase 2 (DONE):** Deep code analysis — reads actual source files, generates honest summaries, rewrites READMEs
+3. **Phase 3 (IN PROGRESS):** Living system that updates when repos change, surfaces "you already have X" when you describe a need
+4. **Phase 4 (FUTURE):** The "agentic memory" — when you think "I need a tool for Y", this system says "you already built something similar, here it is"

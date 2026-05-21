@@ -15,6 +15,8 @@ interface AtlasState {
   activeTags: string[];
   detailOpen: boolean;
   isDataLoaded: boolean;
+  isDeepAnalyzing: boolean;
+  deepAnalyzeProgress: string;
 
   setUsername: (u: string) => void;
   setProjects: (p: Project[]) => void;
@@ -30,6 +32,9 @@ interface AtlasState {
   setActiveTags: (t: string[]) => void;
   setDetailOpen: (o: boolean) => void;
   setDataLoaded: (l: boolean) => void;
+  setDeepAnalyzing: (v: boolean) => void;
+  setDeepAnalyzeProgress: (v: string) => void;
+  updateProject: (id: string, updates: Partial<Project>) => void;
 }
 
 export const useAtlasStore = create<AtlasState>((set) => ({
@@ -46,6 +51,8 @@ export const useAtlasStore = create<AtlasState>((set) => ({
   activeTags: [],
   detailOpen: false,
   isDataLoaded: false,
+  isDeepAnalyzing: false,
+  deepAnalyzeProgress: '',
 
   setUsername: (u) => set({ username: u }),
   setProjects: (p) => set({ projects: p }),
@@ -66,4 +73,14 @@ export const useAtlasStore = create<AtlasState>((set) => ({
   setActiveTags: (t) => set({ activeTags: t }),
   setDetailOpen: (o) => set({ detailOpen: o }),
   setDataLoaded: (l) => set({ isDataLoaded: l }),
+  setDeepAnalyzing: (v) => set({ isDeepAnalyzing: v }),
+  setDeepAnalyzeProgress: (v) => set({ deepAnalyzeProgress: v }),
+  updateProject: (id, updates) =>
+    set((state) => ({
+      projects: state.projects.map((p) => (p.id === id ? { ...p, ...updates } : p)),
+      selectedProject:
+        state.selectedProject?.id === id
+          ? { ...state.selectedProject, ...updates }
+          : state.selectedProject,
+    })),
 }));

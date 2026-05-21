@@ -36,6 +36,17 @@ model Project {
   readmeContent    String?
   analyzedAt       DateTime?
   createdAt        DateTime  @default(now())
+
+  // Deep analysis fields
+  fileTree         String?   // JSON string of file tree structure
+  dependencies     String?   // JSON string of parsed dependencies
+  keyFiles         String?   // JSON string of key file contents {path, content, purpose}
+  deepSummary      String?   // Richer summary based on actual code analysis
+  deepAnalyzedAt   DateTime?
+  proposedReadme   String?   // AI-generated README based on actual code
+  readmeGeneratedAt DateTime?
+  similarProjects  String?   // JSON string of similar project IDs + reasons
+  codeSignature    String?   // JSON string of code patterns/technologies detected
 }
 
 model AnalysisJob {
@@ -44,6 +55,7 @@ model AnalysisJob {
   status        String   @default("pending")
   totalRepos    Int      @default(0)
   processedRepos Int     @default(0)
+  jobType       String   @default("shallow")  // shallow, deep, readme
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }

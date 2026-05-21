@@ -26,6 +26,23 @@ export interface Project {
   category: string | null;
   readmeContent: string | null;
   analyzedAt: string | null;
+
+  // Deep analysis fields
+  fileTree: FileTreeNode[] | null;
+  dependencies: Record<string, string[]> | null;
+  keyFiles: { path: string; content: string; purpose: string }[] | null;
+  deepSummary: string | null;
+  deepAnalyzedAt: string | null;
+  proposedReadme: string | null;
+  readmeGeneratedAt: string | null;
+  similarProjects: { id: string; name: string; reason: string; score: number }[] | null;
+  codeSignature: { frameworks: string[]; patterns: string[]; architecture: string } | null;
+}
+
+export interface FileTreeNode {
+  path: string;
+  type: 'file' | 'dir';
+  children?: FileTreeNode[];
 }
 
 export interface AnalysisJob {
