@@ -559,8 +559,8 @@ export function DetailPanel() {
       if (!open) setSelectedProject(null);
     }}>
       <SheetContent className="w-[560px] sm:max-w-[560px] bg-card/95 backdrop-blur-md border-border/30 p-0 overflow-hidden">
-        {/* Enhanced gradient header bar - 3px with shimmer + glow */}
-        <div className="relative">
+        {/* Enhanced gradient header bar - 3px with shimmer + glow + noise texture */}
+        <div className="relative noise-texture">
           <div
             className="h-[3px] w-full relative overflow-hidden"
             style={{
@@ -613,6 +613,7 @@ export function DetailPanel() {
                         strokeDasharray={`${(health.score / 100) * 81.68} 81.68`}
                         strokeLinecap="round"
                         opacity="0.85"
+                        className="progress-ring-animate"
                         style={{ transition: 'stroke-dasharray 0.6s ease-out' }}
                       />
                     </svg>
@@ -725,9 +726,9 @@ export function DetailPanel() {
                 <h4 className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1">
                   <Cpu className="w-3 h-3" /> Project Profile
                 </h4>
-                <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-3 py-2.5 rounded-lg bg-background/20 border border-border/5">
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-3 py-2.5 rounded-lg bg-background/30 border border-border/10 shadow-sm">
                   {skillProfile.filter(s => s.score > 0).map(skill => (
-                    <div key={skill.label} className="flex items-center gap-1.5">
+                    <div key={skill.label} className="flex items-center gap-1.5" title={`${skill.label}: ${skill.score}/5 — ${skill.label === 'Frontend' ? 'UI/web development capability' : skill.label === 'Backend' ? 'Server/API development capability' : skill.label === 'CLI' ? 'Command-line tool capability' : skill.label === 'AI/ML' ? 'AI/ML integration capability' : skill.label === 'Desktop' ? 'Desktop application capability' : 'API design capability'}`}>
                       <span className="text-[10px] text-muted-foreground/60 w-14">{skill.label}</span>
                       <div className="flex gap-0.5">
                         {Array.from({ length: 5 }).map((_, i) => (
@@ -1021,7 +1022,7 @@ export function DetailPanel() {
               </motion.div>
             )}
 
-            <Separator className="bg-border/20" />
+            <Separator className="bg-border/10 section-divider-dotted" />
 
             {/* ===== ENHANCED FILE TREE SECTION ===== */}
             <motion.div
@@ -1168,7 +1169,7 @@ export function DetailPanel() {
                             setSelectedProject(spProject);
                           }
                         }}
-                        className="w-full text-left p-2.5 rounded-lg border border-border/15 bg-background/20 hover:bg-background/40 transition-colors"
+                        className="w-full text-left p-2.5 rounded-lg border border-border/15 bg-background/20 hover:bg-background/40 transition-colors group/similar"
                       >
                         <div className="flex items-center gap-2 mb-1">
                           {/* Colored category dot */}
@@ -1192,7 +1193,7 @@ export function DetailPanel() {
                             <span className="text-[10px] font-bold text-emerald-400 w-7 text-right">{sp.score}%</span>
                           </div>
                         </div>
-                        <p className="text-[10px] text-muted-foreground/40 line-clamp-1">{sp.reason}</p>
+                        <p className="text-[10px] text-muted-foreground/40 line-clamp-1 group-hover/similar:text-muted-foreground/60 transition-colors">{sp.reason}</p>
                       </motion.button>
                     );
                   })}
@@ -1218,7 +1219,7 @@ export function DetailPanel() {
               )}
             </motion.div>
 
-            <Separator className="bg-border/20" />
+            <Separator className="bg-border/10 section-divider-dotted" />
 
             {/* Stats Grid */}
             <motion.div
@@ -1312,7 +1313,7 @@ export function DetailPanel() {
               </motion.div>
             )}
 
-            <Separator className="bg-border/20" />
+            <Separator className="bg-border/10 section-divider-dotted" />
 
             {/* ===== ENHANCED README SECTION WITH DIFF VIEW ===== */}
             {(project.readmeContent || project.proposedReadme) && (
@@ -1343,14 +1344,14 @@ export function DetailPanel() {
                 </div>
                 {project.proposedReadme ? (
                   <Tabs value={readmeView} onValueChange={(v) => setReadmeView(v as 'proposed' | 'original' | 'diff')} className="w-full">
-                    <TabsList className="h-7 bg-background/30 p-0.5">
-                      <TabsTrigger value="proposed" className="text-[10px] h-6 px-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400">
+                    <TabsList className="h-7 bg-background/30 p-0.5 relative">
+                      <TabsTrigger value="proposed" className="text-[10px] h-6 px-2 data-[state=active]:bg-emerald-600/20 data-[state=active]:text-emerald-400 relative data-[state=active]:tab-active-indicator">
                         <Sparkles className="w-3 h-3 mr-1" /> Generated
                       </TabsTrigger>
-                      <TabsTrigger value="original" className="text-[10px] h-6 px-2">
+                      <TabsTrigger value="original" className="text-[10px] h-6 px-2 relative data-[state=active]:tab-active-indicator">
                         Original
                       </TabsTrigger>
-                      <TabsTrigger value="diff" className="text-[10px] h-6 px-2 data-[state=active]:bg-amber-600/20 data-[state=active]:text-amber-400">
+                      <TabsTrigger value="diff" className="text-[10px] h-6 px-2 data-[state=active]:bg-amber-600/20 data-[state=active]:text-amber-400 relative data-[state=active]:tab-active-indicator">
                         Diff
                       </TabsTrigger>
                     </TabsList>

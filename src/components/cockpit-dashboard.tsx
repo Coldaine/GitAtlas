@@ -10,9 +10,12 @@ import { DetailPanel } from '@/components/detail-panel';
 import { SmartSearchDialog } from '@/components/smart-search-dialog';
 import { CompareDialog } from '@/components/compare-dialog';
 import { ExportDialog } from '@/components/export-dialog';
+import { CommandPalette } from '@/components/command-palette';
 import { DependencyNetwork } from '@/components/dependency-network';
 import { ActivityHeatmap } from '@/components/activity-heatmap';
 import { OnboardingTour } from '@/components/onboarding-tour';
+import { TechRadar } from '@/components/tech-radar';
+import { BookmarkDashboard } from '@/components/bookmark-dashboard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,7 +29,9 @@ import {
   Microscope, Calendar, FileText, Keyboard,
   ShieldCheck, AlertTriangle, Archive, GitCompare,
   Building2, BarChart3, RefreshCw, Microscope as DeepAnalyzeIcon,
-  Download, Share2,
+  Download, Share2, Target, Bookmark as BookmarkIcon,
+  Code2, Tag, GitCommit, Hash, Layers, Trophy,
+  PanelLeftClose, PanelLeft, Circle,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
@@ -80,6 +85,8 @@ export function CockpitDashboard() {
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
 
   // Check if org repos are already loaded
   const hasOrgRepos = useMemo(() => projects.some(p => p.ownerType === 'Organization'), [projects]);
@@ -89,6 +96,11 @@ export function CockpitDashboard() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
+      // ⌘K / Ctrl+K for command palette
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setCommandPaletteOpen(prev => !prev);
+      }
       if (e.key === '/' && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
         setSmartSearchOpen(true);
@@ -96,6 +108,7 @@ export function CockpitDashboard() {
       if (e.key === 'Escape') {
         setSmartSearchOpen(false);
         setShowKeyboardHelp(false);
+        setCommandPaletteOpen(false);
       }
       if (e.key === '1' && e.metaKey) {
         e.preventDefault();
@@ -116,6 +129,14 @@ export function CockpitDashboard() {
       if (e.key === '5' && e.metaKey) {
         e.preventDefault();
         setViewMode('network');
+      }
+      if (e.key === '6' && e.metaKey) {
+        e.preventDefault();
+        setViewMode('radar');
+      }
+      if (e.key === '7' && e.metaKey) {
+        e.preventDefault();
+        setViewMode('bookmarks');
       }
       if (e.key === '?' && e.shiftKey) {
         e.preventDefault();
@@ -388,13 +409,23 @@ export function CockpitDashboard() {
         `}</style>
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-emerald-400" />
-          <span className="text-sm font-bold tracking-tight">Git Atlas</span>
+          <span className="text-[15px] font-bold tracking-tight bg-gradient-to-r from-emerald-400 to-teal-400 bg-clip-text text-transparent">Git Atlas</span>
+          <button
+            onClick={() => setCommandPaletteOpen(true)}
+            className="ml-1 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground/30 border border-border/15 hover:border-border/30 hover:text-muted-foreground/50 transition-all cursor-pointer"
+            title="Command Palette (⌘K)"
+          >
+            ⌘K
+          </button>
         </div>
 
         <div className="h-4 w-px bg-border/20" />
 
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="font-medium text-foreground/80">{username}</span>
+          <span className="font-medium text-foreground/80 flex items-center gap-1.5">
+            {username}
+            <Circle className="w-1.5 h-1.5 fill-emerald-400 text-emerald-400 animate-pulse" />
+          </span>
           <span className="text-muted-foreground/30">•</span>
           <span><AnimatedCounter target={projects.length} /> repos</span>
           <span className="text-muted-foreground/30">•</span>
@@ -446,15 +477,21 @@ export function CockpitDashboard() {
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Filter..."
-              className="h-7 pl-7 text-xs bg-card/30 border-border/20 placeholder:text-muted-foreground/30 focus:border-emerald-500/30 focus:shadow-[0_0_8px_rgba(16,185,129,0.1)] transition-all duration-300"
+              placeholder="Filter… ⌘K"
+              className="h-7 pl-7 pr-7 text-xs bg-card/30 border-border/20 placeholder:text-muted-foreground/30 focus:border-emerald-500/30 focus:shadow-[0_0_8px_rgba(16,185,129,0.1)] transition-all duration-300"
             />
+            {!searchQuery && (
+              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] text-muted-foreground/20 pointer-events-none">⌘K</span>
+            )}
             {searchQuery && (
               <button onClick={() => setSearchQuery('')} className="absolute right-1.5 top-1/2 -translate-y-1/2">
                 <X className="w-3 h-3 text-muted-foreground/40 hover:text-foreground" />
               </button>
             )}
           </div>
+
+          {/* Separator between stats and actions */}
+          <div className="h-4 w-px bg-border/10" />
 
           {/* Smart search — tour target */}
           <div id="tour-smart-search">
@@ -589,6 +626,20 @@ export function CockpitDashboard() {
             >
               <Share2 className="w-3.5 h-3.5" />
             </button>
+            <button
+              onClick={() => setViewMode('radar')}
+              className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'radar' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Tech Radar (⌘6)"
+            >
+              <Target className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode('bookmarks')}
+              className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'bookmarks' ? 'bg-amber-600/20 text-amber-400' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Bookmarks (⌘7)"
+            >
+              <BookmarkIcon className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           <Button
@@ -609,166 +660,210 @@ export function CockpitDashboard() {
       {/* Main cockpit: left panels + center graph + right feed */}
       <div className="flex-1 flex overflow-hidden">
         {/* LEFT PANEL — Charts & Tags */}
-        <div className="w-64 shrink-0 border-r border-border/15 bg-card/10 flex flex-col overflow-hidden">
-          <ScrollArea className="flex-1">
-            <div className="p-3 space-y-4">
+        <div className={`shrink-0 border-r border-border/15 bg-card/10 flex flex-col overflow-hidden relative transition-all duration-300 ${leftPanelCollapsed ? 'w-8' : 'w-64'}`}>
+          {/* Animated gradient border on left edge */}
+          <div className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-emerald-500/40 via-teal-400/20 to-emerald-500/40 left-panel-border" />
 
-              {/* Language donut */}
-              <div>
-                <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-2">Languages</h3>
-                <div className="h-36">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={langData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={30}
-                        outerRadius={55}
-                        paddingAngle={2}
-                        dataKey="value"
-                        stroke="none"
-                      >
-                        {langData.map((entry, i) => (
-                          <Cell key={i} fill={entry.color} fillOpacity={0.7} />
+          {/* Collapse button */}
+          <button
+            onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+            className="absolute top-2 right-1 z-10 p-1 rounded text-muted-foreground/30 hover:text-foreground/60 hover:bg-card/40 transition-all"
+            title={leftPanelCollapsed ? 'Expand panel' : 'Collapse panel'}
+          >
+            {leftPanelCollapsed ? <PanelLeft className="w-3 h-3" /> : <PanelLeftClose className="w-3 h-3" />}
+          </button>
+
+          <AnimatePresence mode="wait">
+            {!leftPanelCollapsed && (
+              <motion.div
+                key="left-panel-content"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="flex-1 overflow-hidden"
+              >
+                <ScrollArea className="flex-1 h-full">
+                  <div className="p-3 space-y-4">
+
+                    {/* Language donut */}
+                    <div>
+                      <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <Code2 className="w-3 h-3" /> Languages
+                        <span className="ml-auto text-[9px] text-muted-foreground/30 normal-case">({langData.length})</span>
+                      </h3>
+                      <div className="h-36">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie
+                              data={langData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={30}
+                              outerRadius={55}
+                              paddingAngle={2}
+                              dataKey="value"
+                              stroke="none"
+                            >
+                              {langData.map((entry, i) => (
+                                <Cell key={i} fill={entry.color} fillOpacity={0.7} />
+                              ))}
+                            </Pie>
+                            <Tooltip
+                              contentStyle={{ background: 'rgba(20,20,20,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, fontSize: 11 }}
+                              itemStyle={{ color: '#e2e8f0' }}
+                              formatter={(value: number, name: string) => [`${value} repos`, name]}
+                            />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="space-y-1 mt-1">
+                        {langData.slice(0, 6).map(l => (
+                          <div key={l.name} className="flex items-center gap-2 text-[10px] px-1.5 py-0.5 rounded hover:bg-card/40 transition-all group/lang">
+                            <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: l.color }} />
+                            <span className="text-foreground/70 flex-1">{l.name}</span>
+                            <span className="text-muted-foreground/40">{l.value}</span>
+                            <div className="w-12 h-1.5 rounded-full bg-card/50 overflow-hidden">
+                              <div
+                                className="h-full rounded-full transition-all duration-300 group-hover/lang:shadow-[0_0_6px_rgba(16,185,129,0.2)]"
+                                style={{ width: `${(l.value / projects.length) * 100}%`, backgroundColor: l.color, opacity: 0.6, borderRadius: '9999px' }}
+                              />
+                            </div>
+                          </div>
                         ))}
-                      </Pie>
-                      <Tooltip
-                        contentStyle={{ background: 'rgba(20,20,20,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, fontSize: 11 }}
-                        itemStyle={{ color: '#e2e8f0' }}
-                        formatter={(value: number, name: string) => [`${value} repos`, name]}
-                      />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <div className="space-y-1 mt-1">
-                  {langData.slice(0, 6).map(l => (
-                    <div key={l.name} className="flex items-center gap-2 text-[10px] px-1.5 py-0.5 rounded hover:bg-card/40 transition-colors">
-                      <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: l.color }} />
-                      <span className="text-foreground/70 flex-1">{l.name}</span>
-                      <span className="text-muted-foreground/40">{l.value}</span>
-                      <div className="w-12 h-1.5 rounded-full bg-card/50 overflow-hidden">
-                        <div className="h-full rounded-full" style={{ width: `${(l.value / projects.length) * 100}%`, backgroundColor: l.color, opacity: 0.6 }} />
                       </div>
                     </div>
-                  ))}
-                </div>
-              </div>
 
-              {/* Section divider */}
-              <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
+                    {/* Section divider */}
+                    <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
 
-              {/* Category bar chart */}
-              <div>
-                <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-2">Categories</h3>
-                <div className="h-28">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={catData} layout="vertical" margin={{ left: 0, right: 0, top: 0, bottom: 0 }}>
-                      <XAxis type="number" hide />
-                      <YAxis type="category" dataKey="name" width={60} tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{ background: 'rgba(20,20,20,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, fontSize: 11 }}
-                        itemStyle={{ color: '#e2e8f0' }}
-                        formatter={(value: number) => [`${value} repos`]}
-                      />
-                      <Bar dataKey="value" radius={3}>
-                        {catData.map((entry, i) => (
-                          <Cell key={i} fill={entry.color} fillOpacity={0.6} />
+                    {/* Category bar chart */}
+                    <div>
+                      <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <Layers className="w-3 h-3" /> Categories
+                        <span className="ml-auto text-[9px] text-muted-foreground/30 normal-case">({catData.length})</span>
+                      </h3>
+                      <div className="h-28">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={catData} layout="vertical" margin={{ left: 0, right: 0, top: 0, bottom: 0 }}>
+                            <XAxis type="number" hide />
+                            <YAxis type="category" dataKey="name" width={60} tick={{ fontSize: 9, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                            <Tooltip
+                              contentStyle={{ background: 'rgba(20,20,20,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, fontSize: 11 }}
+                              itemStyle={{ color: '#e2e8f0' }}
+                              formatter={(value: number) => [`${value} repos`]}
+                            />
+                            <Bar dataKey="value" radius={3}>
+                              {catData.map((entry, i) => (
+                                <Cell key={i} fill={entry.color} fillOpacity={0.6} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+
+                    {/* Activity timeline */}
+                    {activityData.length > 0 && (
+                      <div>
+                        <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-2 flex items-center gap-1">
+                          <Activity className="w-3 h-3" /> Activity
+                        </h3>
+                        <div className="h-20">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <BarChart data={activityData} margin={{ left: 0, right: 0, top: 2, bottom: 0 }}>
+                              <XAxis dataKey="month" tick={{ fontSize: 7, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                              <Tooltip
+                                contentStyle={{ background: 'rgba(20,20,20,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, fontSize: 11 }}
+                                itemStyle={{ color: '#e2e8f0' }}
+                              />
+                              <Bar dataKey="count" fill="#10b981" fillOpacity={0.5} radius={2} />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Section divider */}
+                    <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
+
+                    {/* Commit Heatmap */}
+                    <div>
+                      <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <GitCommit className="w-3 h-3" /> Commit Heatmap
+                      </h3>
+                      <ActivityHeatmap username={username} />
+                    </div>
+
+                    {/* Section divider */}
+                    <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
+
+                    {/* Tag cloud */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider flex items-center gap-1">
+                          <Tag className="w-3 h-3" /> Tags
+                          <span className="text-[9px] text-muted-foreground/30 normal-case">({tagData.length})</span>
+                        </h3>
+                        {activeTags.length > 0 && (
+                          <button onClick={() => setActiveTags([])} className="text-[10px] text-muted-foreground/40 hover:text-foreground">
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {tagData.slice(0, 30).map(([tag, count]) => (
+                          <motion.button
+                            key={tag}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => toggleTag(tag)}
+                            className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all ${
+                              activeTags.includes(tag)
+                                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 tag-bounce'
+                                : 'bg-card/40 text-muted-foreground/60 border border-border/10 hover:border-border/30 hover:text-foreground/80 hover:bg-card/60'
+                            }`}
+                          >
+                            {tag} <span className="opacity-40">{count}</span>
+                          </motion.button>
                         ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
+                      </div>
+                    </div>
 
-              {/* Activity timeline */}
-              {activityData.length > 0 && (
-                <div>
-                  <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-2">Activity</h3>
-                  <div className="h-20">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={activityData} margin={{ left: 0, right: 0, top: 2, bottom: 0 }}>
-                        <XAxis dataKey="month" tick={{ fontSize: 7, fill: '#64748b' }} axisLine={false} tickLine={false} />
-                        <Tooltip
-                          contentStyle={{ background: 'rgba(20,20,20,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, fontSize: 11 }}
-                          itemStyle={{ color: '#e2e8f0' }}
-                        />
-                        <Bar dataKey="count" fill="#10b981" fillOpacity={0.5} radius={2} />
-                      </BarChart>
-                    </ResponsiveContainer>
+                    {/* Section divider */}
+                    <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
+
+                    {/* Category filter */}
+                    <div>
+                      <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-2 flex items-center gap-1">
+                        <Hash className="w-3 h-3" /> Categories
+                        <span className="ml-auto text-[9px] text-muted-foreground/30 normal-case">({catData.length})</span>
+                      </h3>
+                      <div className="flex flex-wrap gap-1">
+                        {catData.map(c => (
+                          <motion.button
+                            key={c.name}
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            onClick={() => toggleTag(c.name)}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] transition-all ${
+                              activeTags.includes(c.name)
+                                ? 'text-white border tag-bounce'
+                                : 'bg-card/30 text-muted-foreground/60 border border-border/10 hover:border-border/30 hover:bg-card/50'
+                            }`}
+                            style={activeTags.includes(c.name) ? { backgroundColor: c.color + '30', borderColor: c.color + '50', color: c.color } : {}}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c.color }} />
+                            {c.name} <span className="opacity-40">{c.value}</span>
+                          </motion.button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              )}
-
-              {/* Section divider */}
-              <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
-
-              {/* Commit Heatmap */}
-              <div>
-                <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-2">Commit Heatmap</h3>
-                <ActivityHeatmap username={username} />
-              </div>
-
-              {/* Section divider */}
-              <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
-
-              {/* Tag cloud */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Tags</h3>
-                  {activeTags.length > 0 && (
-                    <button onClick={() => setActiveTags([])} className="text-[10px] text-muted-foreground/40 hover:text-foreground">
-                      Clear
-                    </button>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {tagData.slice(0, 30).map(([tag, count]) => (
-                    <motion.button
-                      key={tag}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => toggleTag(tag)}
-                      className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all ${
-                        activeTags.includes(tag)
-                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                          : 'bg-card/40 text-muted-foreground/60 border border-border/10 hover:border-border/30 hover:text-foreground/80 hover:bg-card/60'
-                      }`}
-                    >
-                      {tag} <span className="opacity-40">{count}</span>
-                    </motion.button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Section divider */}
-              <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
-
-              {/* Category filter */}
-              <div>
-                <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-2">Categories</h3>
-                <div className="flex flex-wrap gap-1">
-                  {catData.map(c => (
-                    <motion.button
-                      key={c.name}
-                      whileHover={{ scale: 1.05 }}
-                      whileTap={{ scale: 0.95 }}
-                      onClick={() => toggleTag(c.name)}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] transition-all ${
-                        activeTags.includes(c.name)
-                          ? 'text-white border'
-                          : 'bg-card/30 text-muted-foreground/60 border border-border/10 hover:border-border/30 hover:bg-card/50'
-                      }`}
-                      style={activeTags.includes(c.name) ? { backgroundColor: c.color + '30', borderColor: c.color + '50', color: c.color } : {}}
-                    >
-                      <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c.color }} />
-                      {c.name} <span className="opacity-40">{c.value}</span>
-                    </motion.button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </ScrollArea>
+                </ScrollArea>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* CENTER — Main visualization */}
@@ -835,6 +930,28 @@ export function CockpitDashboard() {
               >
                 <DependencyNetwork projects={filteredProjects} onProjectClick={(p) => setSelectedProject(p)} />
               </motion.div>
+            ) : viewMode === 'radar' ? (
+              <motion.div
+                key="radar"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className="h-full"
+              >
+                <TechRadar projects={filteredProjects} onProjectClick={(p) => setSelectedProject(p)} />
+              </motion.div>
+            ) : viewMode === 'bookmarks' ? (
+              <motion.div
+                key="bookmarks"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className="h-full"
+              >
+                <BookmarkDashboard projects={filteredProjects} onProjectClick={(p) => setSelectedProject(p)} />
+              </motion.div>
             ) : (
               <motion.div
                 key="grid"
@@ -867,7 +984,7 @@ export function CockpitDashboard() {
         {/* RIGHT PANEL — Activity feed + Insights */}
         <div className="w-60 shrink-0 border-l border-border/15 bg-card/10 flex flex-col overflow-hidden">
           <div className="px-3 py-2 border-b border-border/10 flex items-center justify-between">
-            <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Recent Activity</h3>
+            <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider">Recent Activity</h3>
             <button
               onClick={handleRefresh}
               className="text-muted-foreground/30 hover:text-foreground/60 transition-colors"
@@ -877,13 +994,13 @@ export function CockpitDashboard() {
             </button>
           </div>
 
-          {/* Filter tabs */}
+          {/* Filter tabs — slightly larger for better clickability */}
           <div className="flex gap-0.5 px-2 py-1.5 border-b border-border/5">
             {(['all', 'active', 'stale', 'analyzed'] as const).map(f => (
               <button
                 key={f}
                 onClick={() => setActivityFilter(f)}
-                className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${
+                className={`text-[10px] px-2.5 py-1 rounded transition-colors ${
                   activityFilter === f
                     ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
                     : 'text-muted-foreground/30 border border-transparent hover:text-muted-foreground/60'
@@ -900,6 +1017,12 @@ export function CockpitDashboard() {
                 const catColor = p.category ? CATEGORY_COLORS[p.category] : '#64748b';
                 const isActive = p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() < 7 * 24 * 60 * 60 * 1000);
                 const isDeepAnalyzed = !!p.deepAnalyzedAt;
+                const categoryIcon = p.category === 'tool' ? '⚙' :
+                  p.category === 'library' ? '📚' :
+                  p.category === 'application' ? '🖥' :
+                  p.category === 'experiment' ? '🧪' :
+                  p.category === 'template' ? '📋' :
+                  p.category === 'config' ? '🔧' : '';
 
                 return (
                   <motion.button
@@ -909,7 +1032,8 @@ export function CockpitDashboard() {
                     transition={{ delay: i * 0.03 }}
                     onClick={() => setSelectedProject(p)}
                     id={i === 0 ? 'tour-detail-panel' : undefined}
-                    className="w-full text-left p-2 rounded-md hover:bg-card/40 transition-all group border-l-2 border-transparent hover:border-emerald-500/40"
+                    className="w-full text-left p-2 rounded-md hover:bg-card/40 transition-all group border-l-2 feed-item-hover"
+                    style={{ borderLeftColor: catColor + '60' }}
                   >
                     <div className="flex items-start gap-2">
                       <div className="relative mt-0.5">
@@ -923,6 +1047,7 @@ export function CockpitDashboard() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1">
+                          {categoryIcon && <span className="text-[9px] leading-none">{categoryIcon}</span>}
                           <p className="text-[11px] font-medium text-foreground/80 truncate group-hover:text-foreground transition-colors">
                             {p.name}
                           </p>
@@ -953,10 +1078,10 @@ export function CockpitDashboard() {
             </div>
           </ScrollArea>
 
-          {/* Deep Analysis Progress */}
+          {/* Deep Analysis Progress — animated ring */}
           <div className="border-t border-border/10 px-3 py-2">
             <div className="flex items-center justify-between mb-1.5">
-              <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider flex items-center gap-1">
+              <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider flex items-center gap-1">
                 <Microscope className="w-2.5 h-2.5" /> Deep Analysis
                 {isDeepAnalyzing && (
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
@@ -964,24 +1089,46 @@ export function CockpitDashboard() {
               </h3>
               <span className="text-[9px] text-emerald-400/50">{deepAnalyzedCount}/{projects.length}</span>
             </div>
-            <div className="w-full h-1.5 rounded-full bg-card/50 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-emerald-500/60 transition-all duration-500"
-                style={{ width: `${(deepAnalyzedCount / Math.max(projects.length, 1)) * 100}%` }}
-              />
+            <div className="flex items-center gap-3">
+              {/* Animated progress ring */}
+              <div className="relative w-10 h-10 shrink-0">
+                <svg viewBox="0 0 36 36" className="w-10 h-10 -rotate-90">
+                  <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="3" />
+                  <circle
+                    cx="18" cy="18" r="14" fill="none" stroke="#10b981" strokeWidth="3"
+                    strokeDasharray={`${(deepAnalyzedCount / Math.max(projects.length, 1)) * 87.96} 87.96`}
+                    strokeLinecap="round"
+                    opacity="0.7"
+                    className="progress-ring-animate"
+                    style={{ transition: 'stroke-dasharray 0.5s ease-out' }}
+                  />
+                </svg>
+                <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-emerald-400/70">
+                  {Math.round((deepAnalyzedCount / Math.max(projects.length, 1)) * 100)}%
+                </span>
+              </div>
+              <div className="flex-1">
+                {deepAnalyzedCount < projects.length ? (
+                  <p className="text-[9px] text-muted-foreground/30">
+                    {projects.length - deepAnalyzedCount} repos awaiting analysis
+                  </p>
+                ) : (
+                  <p className="text-[9px] text-emerald-400/50">
+                    All repos analyzed ✓
+                  </p>
+                )}
+              </div>
             </div>
-            {deepAnalyzedCount < projects.length && (
-              <p className="text-[9px] text-muted-foreground/30 mt-1">
-                {projects.length - deepAnalyzedCount} repos awaiting analysis
-              </p>
-            )}
           </div>
 
           {/* Needs Attention */}
           {projects.filter(p => p.isArchived || (p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() > 180 * 24 * 60 * 60 * 1000))).length > 0 && (
             <div className="border-t border-border/10 px-3 py-2 bg-orange-500/5">
-              <h3 className="text-[10px] font-medium text-orange-400/60 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <h3 className="text-[11px] font-medium text-orange-400/60 uppercase tracking-wider mb-1.5 flex items-center gap-1">
                 <AlertTriangle className="w-2.5 h-2.5" /> Needs Attention
+                <span className="ml-auto text-[9px] normal-case text-orange-400/40">
+                  ({projects.filter(p => p.isArchived || (p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() > 180 * 24 * 60 * 60 * 1000))).length})
+                </span>
               </h3>
               {projects
                 .filter(p => p.isArchived || (p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() > 180 * 24 * 60 * 60 * 1000)))
@@ -1006,18 +1153,23 @@ export function CockpitDashboard() {
             </div>
           )}
 
-          {/* Top Starred */}
+          {/* Top Starred — with trophy icons */}
           <div className="border-t border-border/10 px-3 py-2">
-            <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1.5">Most Starred</h3>
-            {[...projects].sort((a, b) => b.stargazersCount - a.stargazersCount).slice(0, 4).map(p => {
+            <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1.5">Most Starred</h3>
+            {[...projects].sort((a, b) => b.stargazersCount - a.stargazersCount).slice(0, 4).map((p, idx) => {
               const starTrend = p.stargazersCount > 0 ? Math.min(p.stargazersCount / 5, 20) : 0;
+              const trophyIcon = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '';
               return (
                 <button
                   key={p.id}
                   onClick={() => setSelectedProject(p)}
                   className="w-full flex items-center gap-2 py-1 text-left hover:bg-card/30 rounded px-1 transition-colors"
                 >
-                  <Star className="w-3 h-3 text-amber-400/60" />
+                  {trophyIcon ? (
+                    <span className="text-[10px] leading-none w-3 shrink-0">{trophyIcon}</span>
+                  ) : (
+                    <Star className="w-3 h-3 text-amber-400/60" />
+                  )}
                   <span className="text-[10px] text-foreground/60 truncate flex-1">{p.name}</span>
                   <svg width="24" height="12" className="shrink-0">
                     <rect x="0" y={8 - starTrend * 0.3} width="3" height={starTrend * 0.3 + 2} rx="1" fill="rgba(245,158,11,0.2)" />
@@ -1110,6 +1262,25 @@ export function CockpitDashboard() {
       {/* Export dialog */}
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} />
 
+      {/* Command Palette */}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        projects={projects}
+        currentView={viewMode}
+        onNavigate={setViewMode}
+        onProjectSelect={setSelectedProject}
+        onSmartSearch={() => setSmartSearchOpen(true)}
+        onDeepAnalyze={handleDeepAnalyzeAll}
+        onRewriteReadmes={handleBatchRewriteReadmes}
+        onCompare={() => setCompareOpen(true)}
+        onExport={() => setExportOpen(true)}
+        onOrgRepos={handleFetchOrgRepos}
+        onToggleTag={toggleTag}
+        tags={tagData}
+        activeTags={activeTags}
+      />
+
       {/* Keyboard shortcuts overlay */}
       <AnimatePresence>
         {showKeyboardHelp && (
@@ -1138,6 +1309,9 @@ export function CockpitDashboard() {
                 <ShortcutItem keys="⌘3" description="Timeline view" />
                 <ShortcutItem keys="⌘4" description="Stats overview" />
                 <ShortcutItem keys="⌘5" description="Dependency network" />
+                <ShortcutItem keys="⌘6" description="Tech Radar" />
+                <ShortcutItem keys="⌘7" description="Bookmarks" />
+                <ShortcutItem keys="⌘K" description="Command palette" />
                 <ShortcutItem keys="?" description="Show this help" />
                 <ShortcutItem keys="Esc" description="Close dialogs" />
               </div>

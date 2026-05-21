@@ -737,3 +737,87 @@ Stage Summary:
 - Header: glassmorphism with animated gradient, counting stat animations, gradient button hovers, pulsing analysis indicator, expanding search
 - Stats overview: gradient stat cards with animated counters, custom framework bars, health ring chart with central score, enhanced shared dependencies
 - No component interfaces/props changed — fully backwards compatible
+
+---
+Task ID: 13
+Agent: Main (Session Continuation)
+Task: QA + Command Palette + Tech Radar + Bookmarks + Comprehensive Styling Polish
+
+Work Log:
+- Performed comprehensive QA via agent-browser:
+  - App loads correctly with 28 repos, 28/28 deep analyzed
+  - All 5 views (graph, grid, timeline, stats, network) working
+  - Detail panel, smart search, compare, export all functional
+  - No runtime errors, no console errors
+  - Smart Search correctly finds ColdVox at 95% relevance for "voice dictation tool"
+- Created Command Palette (`/src/components/command-palette.tsx`):
+  - ⌘K / Ctrl+K trigger with full-screen overlay
+  - 4 result groups: Navigate, Projects, Actions, Filters
+  - Fuzzy search with emerald highlighting
+  - Arrow keys navigation, Enter to execute, Esc to close
+  - Recent items persisted in localStorage
+  - Accessible with proper ARIA roles
+- Created Tech Radar View (`/src/components/tech-radar.tsx`):
+  - SVG-based radar/spider chart with 8 dimensions
+  - Dimensions: Frontend, Backend, AI/LLM, CLI Tools, Data/Storage, Automation, Desktop, DevOps
+  - Scores computed from codeSignature, tags, topics, language
+  - Gap Analysis section identifying weak areas
+  - Hover shows contributing projects
+  - Emerald-to-teal gradient fill with glow filter
+- Created Bookmark Dashboard (`/src/components/bookmark-dashboard.tsx`):
+  - Reads bookmarks from localStorage
+  - Richer cards with health score ring, deep summary, frameworks
+  - Quick Actions: View Details, Open in GitHub, Remove Bookmark
+  - Sort options: By Name, By Health, By Last Push, By Stars
+  - Stats bar with bookmarked count + average health
+  - Export bookmarks feature
+- Created Recent Commits API (`/src/app/api/github/recent-commits/route.ts`):
+  - GET endpoint with 10-minute cache
+  - Fetches last 10 commits per repo
+  - Batch fetching with rate limiting
+- Added 'radar' and 'bookmarks' to ViewMode type
+- Added ⌘6 (Tech Radar) and ⌘7 (Bookmarks) keyboard shortcuts
+- Comprehensive Styling Polish:
+  - Left panel: Section icons, count badges, animated gradient border, collapse button, rounded language bars with hover glow
+  - Right panel: Category-colored left borders on feed items, trophy icons for Most Starred, SVG progress ring for Deep Analysis, larger filter tabs
+  - Header: Gradient "Git Atlas" text, pulsing green connected dot, ⌘K hint in search placeholder and badge button
+  - Detail panel: Noise texture overlay, card-like PROFILE section, skill dot tooltips, animated health ring fill, dotted section dividers
+  - Grid cards: Growing shadow on hover, animated health bar fill, "New" badge for recent projects, larger category icons, bookmark pulse animation
+  - Global CSS: Smooth scrolling, emerald selection color, focus-visible ring, wider scrollbar (6px), .no-scrollbar class, skeleton loading animation, 10+ new CSS keyframe animations
+- All changes verified via agent-browser QA
+- Lint passes with 0 errors
+
+Stage Summary:
+- **7 view modes**: graph, grid, timeline, stats, network, radar, bookmarks
+- **Command Palette** (⌘K): Full power-user navigation and action search
+- **Tech Radar**: 8-dimension spider chart with gap analysis
+- **Bookmark Dashboard**: Dedicated view for saved projects with sorting and export
+- **Recent Commits API**: Backend endpoint for commit feed
+- **Comprehensive styling polish**: Left/right panel enhancements, header refinement, detail panel depth, grid card improvements, global CSS improvements
+- **Keyboard shortcuts**: /, ⌘K, ⌘1/2/3/4/5/6/7, ?, Esc
+
+## Current Project Status
+- **28/28 repos deep analyzed** — all features fully unlocked
+- **7 views**: Force-directed graph, card grid, timeline, stats overview, dependency network, tech radar, bookmarks
+- **Command Palette** (⌘K): Navigate, search projects, execute actions, toggle filters
+- **Tech Radar**: Portfolio capabilities across 8 dimensions with gap analysis
+- **Bookmark Dashboard**: Dedicated view for bookmarked projects with sort and export
+- **Commit Heatmap**: 1025 commits, 114 active days
+- **Stats Overview**: Portfolio cards, language/category/framework charts, health distribution
+- **Detail Panel**: Gradient header, health score ring, skill dots, tech stack, copy/share/bookmark
+- **Graph**: Category clusters, gradient edges, deep-analysis glow, zoom/pan/minimap, context menu
+- **Smart Search**: "Do I already have X?" with deep analysis data
+- **Compare**: Side-by-side project comparison
+- **Export**: Markdown/JSON portfolio export
+- **Dependency Network**: Chord diagram with threshold slider
+- **Keyboard Shortcuts**: /, ⌘K, ⌘1/2/3/4/5/6/7, ?, Esc
+- **Visual Polish**: Custom scrollbar, shimmer effects, gradient header, noise textures, animated counters, section icons, collapse panel
+
+## Unresolved / Next Steps
+- Mobile responsiveness (current layout is desktop-only)
+- Push proposed READMEs back to GitHub (requires write permissions)
+- "Agentic memory" phase: auto-suggest tools when user describes a need in real-time
+- Recent Commits feed UI component (API exists, frontend not built yet)
+- Activity heatmap could benefit from horizontal scroll in left panel
+- Right panel filter tabs could use URL state for persistence
+- Tech Radar gap analysis could suggest specific project ideas via LLM

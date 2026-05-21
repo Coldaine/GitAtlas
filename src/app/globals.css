@@ -85,6 +85,21 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Smooth scrolling for all scrollable areas */
+  * {
+    scroll-behavior: smooth;
+  }
+  /* Emerald-tinted selection color */
+  ::selection {
+    background: oklch(0.4 0.1 162.48 / 0.4);
+    color: oklch(0.98 0 0);
+  }
+  /* Focus-visible styles for keyboard navigation — emerald ring */
+  :focus-visible {
+    outline: 2px solid oklch(0.696 0.17 162.48 / 0.5);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
 }
 
 /* Gradient animation for hero title */
@@ -94,10 +109,10 @@
   100% { background-position: 0% 50%; }
 }
 
-/* Custom scrollbar — thin, emerald-tinted for dark mode */
+/* Custom scrollbar — slightly wider, emerald-tinted for dark mode */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
   background: transparent;
@@ -114,6 +129,15 @@
 * {
   scrollbar-width: thin;
   scrollbar-color: oklch(0.35 0.02 162.48) transparent;
+}
+
+/* No-scrollbar utility class — hides scrollbar but keeps scrolling */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /* Page load animation */
@@ -196,4 +220,129 @@
   border-left: 3px solid oklch(0.3 0 0);
   padding-left: 1em;
   color: oklch(0.6 0 0);
+}
+
+/* Skeleton loading animation */
+@keyframes skeletonPulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.skeleton-animate {
+  animation: skeletonPulse 1.5s ease-in-out infinite;
+  background: linear-gradient(90deg, oklch(0.2 0 0) 25%, oklch(0.25 0 0) 50%, oklch(0.2 0 0) 75%);
+  background-size: 200% 100%;
+  animation: skeletonPulse 1.5s ease-in-out infinite, skeletonSlide 2s linear infinite;
+}
+
+@keyframes skeletonSlide {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Shimmer bar for detail panel header */
+@keyframes shimmerSlide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.shimmer-bar {
+  animation: shimmerSlide 3s ease-in-out infinite;
+}
+
+/* Health pulse animation */
+@keyframes healthPulse {
+  0%, 100% { opacity: 0.3; r: 13; }
+  50% { opacity: 0; r: 16; }
+}
+
+.health-pulse {
+  animation: healthPulse 2s ease-in-out infinite;
+}
+
+/* Animated health bar fill */
+@keyframes healthBarFill {
+  from { width: 0; }
+}
+
+.health-bar-animate {
+  animation: healthBarFill 0.8s ease-out forwards;
+}
+
+/* Left panel gradient border shimmer */
+@keyframes borderShimmer {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 0.7; }
+}
+
+.left-panel-border {
+  animation: borderShimmer 3s ease-in-out infinite;
+}
+
+/* Tag micro-bounce animation */
+@keyframes tagBounce {
+  0% { transform: scale(1); }
+  30% { transform: scale(0.9); }
+  60% { transform: scale(1.08); }
+  80% { transform: scale(0.97); }
+  100% { transform: scale(1); }
+}
+
+.tag-bounce {
+  animation: tagBounce 0.4s ease-out;
+}
+
+/* Bookmark pulse animation */
+@keyframes bookmarkPulse {
+  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  50% { transform: scale(1.2); box-shadow: 0 0 12px 4px rgba(245, 158, 11, 0.2); }
+  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+.bookmark-pulse {
+  animation: bookmarkPulse 0.5s ease-out;
+}
+
+/* Active tab indicator line */
+.tab-active-indicator::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: oklch(0.696 0.17 162.48);
+  border-radius: 1px;
+}
+
+/* Section dotted divider pattern */
+.section-divider-dotted {
+  border: none;
+  border-top: 1px dotted oklch(0.3 0 0 / 0.3);
+  margin: 0;
+}
+
+/* Noise texture overlay for detail panel header */
+.noise-texture::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Progress ring animation */
+@keyframes progressRingFill {
+  from { stroke-dashoffset: 81.68; }
+}
+
+.progress-ring-animate {
+  animation: progressRingFill 1s ease-out forwards;
+}
+
+/* Hover glow on feed items */
+.feed-item-hover:hover {
+  box-shadow: 0 0 12px 2px oklch(0.696 0.17 162.48 / 0.08);
 }

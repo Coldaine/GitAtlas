@@ -68,3 +68,10 @@ model CommitActivityCache {
   activeDays    Int      @default(0)
   fetchedAt     DateTime @default(now())
 }
+
+model RecentCommitsCache {
+  id          String   @id @default(cuid())
+  username    String   @unique
+  commitsJson String   // JSON string of recent commits array
+  fetchedAt   DateTime @default(now())
+}

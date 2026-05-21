@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 // --- Bookmark persistence helpers ---
 const BOOKMARK_KEY = 'git-atlas-bookmarks';
@@ -165,6 +165,18 @@ function ProjectCard({ project, index, onClick }: ProjectCardProps) {
     setIsBookmarked(bm.has(project.id));
   }, [project.id]);
 
+  // Bookmark pulse animation
+  const [bookmarkPulse, setBookmarkPulse] = useState(false);
+  const prevBookmarked = useRef(false);
+  useEffect(() => {
+    if (isBookmarked && !prevBookmarked.current) {
+      setBookmarkPulse(true);
+      const timer = setTimeout(() => setBookmarkPulse(false), 500);
+      return () => clearTimeout(timer);
+    }
+    prevBookmarked.current = isBookmarked;
+  }, [isBookmarked]);
+
   // Code signature patterns for badges
   const signatureBadges = [
     ...(project.codeSignature?.frameworks || []).slice(0, 4).map(fw => ({ label: fw, color: getFwColor(fw), type: 'fw' as const })),
@@ -187,9 +199,9 @@ function ProjectCard({ project, index, onClick }: ProjectCardProps) {
           background: `linear-gradient(135deg, ${catColor}60, transparent 40%, transparent 60%, ${catColor}40)`,
         }}
       />
-      {/* Inner card with bg-card to create border effect */}
+      {/* Inner card with bg-card to create border effect — shadow grows on hover */}
       <div
-        className="relative rounded-xl overflow-hidden"
+        className="relative rounded-xl overflow-hidden shadow-sm group-hover:shadow-lg group-hover:shadow-black/20 transition-shadow duration-300"
         style={{ background: 'var(--card)' }}
         onClick={onClick}
       >
@@ -208,12 +220,12 @@ function ProjectCard({ project, index, onClick }: ProjectCardProps) {
             initial={{ width: 0 }}
             animate={{ width: `${health}%` }}
             transition={{ delay: index * 0.03 + 0.2, duration: 0.8, ease: 'easeOut' }}
-            className="h-full"
+            className="h-full health-bar-animate"
             style={{ backgroundColor: hColor, opacity: 0.7 }}
           />
         </div>
 
-        {/* Bookmark star — top right */}
+        {/* Bookmark star — top right — with pulse animation on first bookmark */}
         <div className="absolute top-2 right-2 z-10">
           <button
             onClick={toggleBookmark}
@@ -221,7 +233,7 @@ function ProjectCard({ project, index, onClick }: ProjectCardProps) {
               isBookmarked
                 ? 'text-amber-400 bg-amber-400/10 hover:bg-amber-400/20'
                 : 'text-muted-foreground/20 hover:text-amber-400/60 hover:bg-card/60'
-            }`}
+            } ${bookmarkPulse ? 'bookmark-pulse' : ''}`}
             title={isBookmarked ? 'Remove bookmark' : 'Bookmark this project'}
           >
             {isBookmarked ? (
@@ -242,7 +254,7 @@ function ProjectCard({ project, index, onClick }: ProjectCardProps) {
           <div className="flex items-start gap-2.5 mb-2.5">
             <div className="relative mt-0.5 shrink-0">
               <div
-                className="w-9 h-9 rounded-lg flex items-center justify-center text-sm font-medium"
+                className="w-10 h-10 rounded-lg flex items-center justify-center text-base font-medium"
                 style={{ backgroundColor: catColor + '18', color: catColor }}
               >
                 {project.category === 'tool' ? '⚙' :
@@ -266,6 +278,10 @@ function ProjectCard({ project, index, onClick }: ProjectCardProps) {
                 </h3>
                 {project.isArchived && (
                   <Archive className="w-3 h-3 text-orange-400/60 shrink-0" />
+                )}
+                {/* "New" badge for projects created within the last 30 days */}
+                {project.githubCreatedAt && (Date.now() - new Date(project.githubCreatedAt).getTime() < 30 * 24 * 60 * 60 * 1000) && (
+                  <span className="text-[8px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/20 font-medium shrink-0">New</span>
                 )}
               </div>
               <p className="text-[10px] text-muted-foreground/35 truncate mt-0.5">
