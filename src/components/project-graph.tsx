@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useAtlasStore } from '@/lib/store';
 import { Project, CATEGORY_COLORS, LANGUAGE_COLORS } from '@/lib/types';
 import { ProjectHoverCard } from '@/components/project-hover-card';
-import { RotateCcw } from 'lucide-react';
+import { RotateCcw, ExternalLink, Sparkles, Bookmark, FileText } from 'lucide-react';
 
 interface NodePosition {
   id: string;
@@ -28,8 +28,40 @@ interface ProjectGraphProps {
   projects: Project[];
 }
 
-// Global cache for node positions to survive re-renders/view switches
+// Global cache for node positions
 const nodePositionCache = new Map<string, { x: number; y: number }>();
+
+// Floating particle type
+interface Particle {
+  id: number;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  r: number;
+  opacity: number;
+  targetOpacity: number;
+  phase: number;
+}
+
+// Compute health score for node ring
+function computeHealth(project: { pushedAt?: string | null; openIssuesCount: number; isArchived: boolean; stargazersCount: number }): number {
+  if (project.isArchived) return 0;
+  let score = 50;
+  if (project.pushedAt) {
+    const daysSince = (Date.now() - new Date(project.pushedAt).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSince < 7) score += 30;
+    else if (daysSince < 30) score += 20;
+    else if (daysSince < 90) score += 10;
+    else if (daysSince > 365) score -= 20;
+  }
+  if (project.stargazersCount > 10) score += 15;
+  else if (project.stargazersCount > 3) score += 10;
+  else if (project.stargazersCount > 0) score += 5;
+  if (project.openIssuesCount > 20) score -= 5;
+  else if (project.openIssuesCount > 5) score -= 2;
+  return Math.max(0, Math.min(100, score));
+}
 
 export function ProjectGraph({ projects }: ProjectGraphProps) {
   const { setSelectedProject, activeTags } = useAtlasStore();
@@ -55,6 +87,29 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
 
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
+
+  // Animated pulse edges
+  const [pulseProgress, setPulseProgress] = useState(0);
+  const pulseAnimRef = useRef<number>(0);
+
+  // Floating particles
+  const [particles] = useState<Particle[]>(() =>
+    Array.from({ length: 25 }, (_, i) => ({
+      id: i,
+      x: Math.random() * 800,
+      y: Math.random() * 600,
+      vx: (Math.random() - 0.5) * 0.3,
+      vy: (Math.random() - 0.5) * 0.3,
+      r: 1 + Math.random() * 2,
+      opacity: 0.03 + Math.random() * 0.05,
+      targetOpacity: 0.03 + Math.random() * 0.05,
+      phase: Math.random() * Math.PI * 2,
+    }))
+  );
+  const particlesRef = useRef(particles);
+
   const nodeSize = useCallback((p: Project) => {
     const base = 10;
     const starBonus = Math.min(p.stargazersCount * 3, 15);
@@ -68,7 +123,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     return '#64748b';
   }, []);
 
-  // Build edges from projects (both tag-based and dependency-based)
+  // Build edges from projects
   const computedEdges = useMemo(() => {
     const newEdges: Edge[] = [];
     for (let i = 0; i < projects.length; i++) {
@@ -76,7 +131,6 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         const a = projects[i];
         const b = projects[j];
 
-        // Tag-based edges
         const aTags = new Set([...a.tags, ...a.topics, a.language].filter(Boolean));
         const bTags = new Set([...b.tags, ...b.topics, b.language].filter(Boolean));
         const shared = [...aTags].filter((t) => bTags.has(t));
@@ -84,7 +138,6 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
           newEdges.push({ source: a.id, target: b.id, weight: shared.length, type: 'tag' });
         }
 
-        // Dependency-based edges
         if (a.dependencies && b.dependencies) {
           const aAll = [...(a.dependencies.runtime || []), ...(a.dependencies.dev || [])];
           const bAll = [...(b.dependencies.runtime || []), ...(b.dependencies.dev || [])];
@@ -98,7 +151,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     return newEdges;
   }, [projects]);
 
-  // Category cluster labels — compute centroid for each category
+  // Category cluster labels
   const categoryLabels = useMemo(() => {
     const catNodes = new Map<string, { xSum: number; ySum: number; count: number; color: string }>();
     for (const node of nodes) {
@@ -127,6 +180,14 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     }));
   }, [nodes]);
 
+  // Category cluster backgrounds (blurred circles at centroids)
+  const clusterBackgrounds = useMemo(() => {
+    return categoryLabels.map(cl => ({
+      ...cl,
+      radius: Math.max(60, cl.count * 25),
+    }));
+  }, [categoryLabels]);
+
   // Category counts for legend
   const categoryCounts = useMemo(() => {
     const map = new Map<string, number>();
@@ -153,6 +214,16 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     return gradients;
   }, [computedEdges, projects]);
 
+  // Edge hub detection - where many edges converge
+  const hubNodes = useMemo(() => {
+    const edgeCounts = new Map<string, number>();
+    for (const edge of computedEdges) {
+      edgeCounts.set(edge.source, (edgeCounts.get(edge.source) || 0) + 1);
+      edgeCounts.set(edge.target, (edgeCounts.get(edge.target) || 0) + 1);
+    }
+    return [...edgeCounts.entries()].filter(([, count]) => count >= 4).map(([id]) => id);
+  }, [computedEdges]);
+
   // Resize observer
   useEffect(() => {
     const container = containerRef.current;
@@ -167,7 +238,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     return () => observer.disconnect();
   }, []);
 
-  // Initialize nodes (use cached positions if available)
+  // Initialize nodes
   useEffect(() => {
     if (projects.length === 0) return;
 
@@ -213,7 +284,6 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
       const attractionStrength = 0.004;
       const centeringStrength = 0.008;
 
-      // Repulsion
       for (let i = 0; i < ns.length; i++) {
         for (let j = i + 1; j < ns.length; j++) {
           const dx = ns[i].x - ns[j].x;
@@ -230,7 +300,6 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         }
       }
 
-      // Attraction
       for (const edge of es) {
         const source = ns.find((n) => n.id === edge.source);
         const target = ns.find((n) => n.id === edge.target);
@@ -249,7 +318,6 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         target.vy -= fy;
       }
 
-      // Update
       for (const node of ns) {
         if (draggingRef.current === node.id) continue;
 
@@ -264,8 +332,22 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         node.x = Math.max(pad, Math.min(dimensions.width - pad, node.x));
         node.y = Math.max(pad, Math.min(dimensions.height - pad, node.y));
 
-        // Cache position
         nodePositionCache.set(node.id, { x: node.x, y: node.y });
+      }
+
+      // Update particles
+      const pRef = particlesRef.current;
+      for (const p of pRef) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.phase += 0.01;
+        p.opacity = p.targetOpacity + Math.sin(p.phase) * 0.02;
+
+        // Wrap around
+        if (p.x < 0) p.x = dimensions.width;
+        if (p.x > dimensions.width) p.x = 0;
+        if (p.y < 0) p.y = dimensions.height;
+        if (p.y > dimensions.height) p.y = 0;
       }
 
       setNodes([...ns]);
@@ -275,6 +357,28 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     animRef.current = requestAnimationFrame(simulate);
     return () => cancelAnimationFrame(animRef.current);
   }, [dimensions]);
+
+  // Pulse animation for hovered edges
+  useEffect(() => {
+    if (!hoveredNode) {
+      setPulseProgress(0);
+      return;
+    }
+
+    const animate = () => {
+      setPulseProgress(prev => (prev + 0.015) % 1);
+      pulseAnimRef.current = requestAnimationFrame(animate);
+    };
+    pulseAnimRef.current = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(pulseAnimRef.current);
+  }, [hoveredNode]);
+
+  // Close context menu on click elsewhere
+  useEffect(() => {
+    const handler = () => setContextMenu(null);
+    window.addEventListener('click', handler);
+    return () => window.removeEventListener('click', handler);
+  }, []);
 
   // Zoom with wheel
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -344,6 +448,84 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     isPanningRef.current = false;
   }, []);
 
+  // Double-click to zoom to node
+  const handleDoubleClick = useCallback((nodeId: string) => {
+    const node = nodesRef.current.find(n => n.id === nodeId);
+    if (!node) return;
+    const targetZoom = 2;
+    const targetPanX = dimensions.width / 2 - node.x * targetZoom;
+    const targetPanY = dimensions.height / 2 - node.y * targetZoom;
+
+    // Animate zoom/pan
+    const startZoom = zoomRef.current;
+    const startPanX = panRef.current.x;
+    const startPanY = panRef.current.y;
+    const duration = 400;
+    const start = performance.now();
+
+    const animateZoom = (now: number) => {
+      const elapsed = now - start;
+      const t = Math.min(1, elapsed / duration);
+      const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t; // easeInOut
+
+      const currentZoom = startZoom + (targetZoom - startZoom) * ease;
+      const currentPanX = startPanX + (targetPanX - startPanX) * ease;
+      const currentPanY = startPanY + (targetPanY - startPanY) * ease;
+
+      zoomRef.current = currentZoom;
+      panRef.current = { x: currentPanX, y: currentPanY };
+      setZoom(currentZoom);
+      setPan({ x: currentPanX, y: currentPanY });
+
+      if (t < 1) requestAnimationFrame(animateZoom);
+    };
+
+    requestAnimationFrame(animateZoom);
+  }, [dimensions]);
+
+  // Right-click context menu
+  const handleContextMenu = useCallback((nodeId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    setContextMenu({
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+      nodeId,
+    });
+  }, []);
+
+  const handleContextAction = useCallback((action: string, nodeId: string) => {
+    const node = nodesRef.current.find(n => n.id === nodeId);
+    if (!node) return;
+    const project = node.project;
+
+    switch (action) {
+      case 'github':
+        window.open(project.htmlUrl, '_blank');
+        break;
+      case 'details':
+        setSelectedProject(project);
+        break;
+      case 'bookmark': {
+        const bookmarks = JSON.parse(localStorage.getItem('git-atlas-bookmarks') || '[]');
+        if (!bookmarks.includes(project.id)) {
+          localStorage.setItem('git-atlas-bookmarks', JSON.stringify([...bookmarks, project.id]));
+        }
+        break;
+      }
+      case 'analyze':
+        fetch('/api/github/deep-analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: project.id, username: project.ownerLogin }),
+        });
+        break;
+    }
+    setContextMenu(null);
+  }, [setSelectedProject]);
+
   const isNodeDimmed = useCallback(
     (node: NodePosition) => {
       if (activeTags.length === 0) return false;
@@ -364,7 +546,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     return connected;
   }, [hoveredNode, edges]);
 
-  // Get category icon initial letter
+  // Get category icon
   const categoryIcon = useCallback((cat: string | null) => {
     if (!cat) return '?';
     const map: Record<string, string> = {
@@ -407,6 +589,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         onMouseLeave={handleMouseUp}
         onMouseDown={handleBgMouseDown}
         onWheel={handleWheel}
+        onContextMenu={(e) => e.preventDefault()}
         style={{ touchAction: 'none' }}
       >
         <defs>
@@ -427,6 +610,27 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
           <filter id="shadow">
             <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="rgba(0,0,0,0.3)" />
           </filter>
+          {/* Inner shadow for depth */}
+          <filter id="innerShadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur" />
+            <feOffset dx="0" dy="1" result="offsetBlur" />
+            <feComposite in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1" result="shadowDiff" />
+            <feFlood floodColor="rgba(0,0,0,0.3)" result="color" />
+            <feComposite in="color" in2="shadowDiff" operator="in" result="shadow" />
+            <feComposite in="SourceGraphic" in2="shadow" operator="over" />
+          </filter>
+          {/* Blur filter for cluster backgrounds */}
+          <filter id="clusterBlur">
+            <feGaussianBlur stdDeviation="30" />
+          </filter>
+          {/* Minimap glow */}
+          <filter id="minimapGlow">
+            <feGaussianBlur stdDeviation="2" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
           {/* Edge gradient definitions */}
           {edgeGradients.map(g => (
             <linearGradient key={g.id} id={g.id} gradientUnits="userSpaceOnUse">
@@ -434,15 +638,21 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
               <stop offset="100%" stopColor={g.toColor} stopOpacity="0.3" />
             </linearGradient>
           ))}
-          {/* Deep analysis emerald particle animation */}
           <style>{`
             @keyframes emeraldPulse {
-              0% { opacity: 0.15; r: inherit; }
+              0% { opacity: 0.15; }
               50% { opacity: 0.35; }
               100% { opacity: 0.15; }
             }
             .deep-glow {
               animation: emeraldPulse 2s ease-in-out infinite;
+            }
+            @keyframes pulseDash {
+              0% { stroke-dashoffset: 20; }
+              100% { stroke-dashoffset: 0; }
+            }
+            .pulse-edge {
+              animation: pulseDash 1s linear infinite;
             }
           `}</style>
         </defs>
@@ -453,9 +663,36 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         </pattern>
         <rect width="100%" height="100%" fill="url(#grid)" />
 
+        {/* Ambient floating particles */}
+        {particlesRef.current.map(p => (
+          <circle
+            key={p.id}
+            cx={p.x}
+            cy={p.y}
+            r={p.r}
+            fill="rgba(255,255,255,1)"
+            opacity={Math.max(0.01, Math.min(0.08, p.opacity))}
+            className="pointer-events-none select-none"
+          />
+        ))}
+
         {/* Main graph group with zoom/pan transform */}
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
-          {/* Category cluster labels — background labels at centroid */}
+          {/* Category cluster backgrounds — soft blurred clouds */}
+          {clusterBackgrounds.map((cl, i) => (
+            <circle
+              key={`cluster-bg-${i}`}
+              cx={cl.x}
+              cy={cl.y + 20}
+              r={cl.radius}
+              fill={cl.color}
+              opacity={0.03}
+              filter="url(#clusterBlur)"
+              className="pointer-events-none select-none"
+            />
+          ))}
+
+          {/* Category cluster labels */}
           {categoryLabels.map((cl, i) => (
             <text
               key={`cluster-${i}`}
@@ -487,22 +724,58 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
             const color = isHighlighted ? highlightColor : baseColor;
             const opacity = isHighlighted ? 0.6 : isDependency ? 0.08 : 0.06;
 
-            // Use gradient for tag edges when highlighted
             const gradientId = `grad-${edge.source}-${edge.target}`;
             const stroke = isHighlighted && !isDependency ? `url(#${gradientId})` : color;
 
+            // Compute pulse position along edge
+            const px = source.x + (target.x - source.x) * pulseProgress;
+            const py = source.y + (target.y - source.y) * pulseProgress;
+
             return (
-              <line
-                key={`edge-${i}`}
-                x1={source.x}
-                y1={source.y}
-                x2={target.x}
-                y2={target.y}
-                stroke={stroke}
-                strokeWidth={isHighlighted ? Math.min(edge.weight * 1, 3) : isDependency ? 1 : 0.5}
-                opacity={opacity}
-                strokeDasharray={isDependency && !isHighlighted ? '4 4' : undefined}
-                style={{ transition: 'opacity 0.3s, stroke-width 0.3s' }}
+              <g key={`edge-${i}`}>
+                <line
+                  x1={source.x}
+                  y1={source.y}
+                  x2={target.x}
+                  y2={target.y}
+                  stroke={stroke}
+                  strokeWidth={isHighlighted ? Math.min(edge.weight * 1, 3) : isDependency ? 1 : 0.5}
+                  opacity={opacity}
+                  strokeDasharray={isDependency && !isHighlighted ? '4 4' : undefined}
+                  style={{ transition: 'opacity 0.3s, stroke-width 0.3s' }}
+                />
+                {/* Animated pulse dot traveling along highlighted edge */}
+                {isHighlighted && (
+                  <circle
+                    cx={px}
+                    cy={py}
+                    r={2.5}
+                    fill={highlightColor}
+                    opacity={0.8}
+                    className="pointer-events-none"
+                    filter="url(#glow)"
+                  />
+                )}
+              </g>
+            );
+          })}
+
+          {/* Edge hub glow — where many edges converge */}
+          {hubNodes.map(nodeId => {
+            const node = nodes.find(n => n.id === nodeId);
+            if (!node) return null;
+            const isHovered = hoveredNode === nodeId;
+            if (isHovered) return null; // Already shown via hover effects
+            return (
+              <circle
+                key={`hub-${nodeId}`}
+                cx={node.x}
+                cy={node.y}
+                r={node.radius + 12}
+                fill={node.color}
+                opacity={0.04}
+                filter="url(#strongGlow)"
+                className="pointer-events-none"
               />
             );
           })}
@@ -514,6 +787,9 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
             const dimmed = isNodeDimmed(node);
             const opacity = dimmed ? 0.12 : isHovered ? 1 : isConnected && hoveredNode ? 0.85 : 0.65;
             const isDeepAnalyzed = !!node.project.deepAnalyzedAt;
+            const healthScore = computeHealth(node.project);
+            const healthColor = healthScore >= 70 ? '#10b981' : healthScore >= 40 ? '#f59e0b' : '#ef4444';
+            const healthDashArray = `${(healthScore / 100) * (2 * Math.PI * (node.radius + 7))} ${2 * Math.PI * (node.radius + 7)}`;
 
             return (
               <g
@@ -522,6 +798,8 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                 onMouseEnter={() => setHoveredNode(node.id)}
                 onMouseLeave={() => setHoveredNode(null)}
                 onMouseDown={(e) => handleMouseDown(node.id, e)}
+                onDoubleClick={() => handleDoubleClick(node.id)}
+                onContextMenu={(e) => handleContextMenu(node.id, e)}
                 onClick={() => setSelectedProject(node.project)}
                 style={{ cursor: 'pointer', transition: 'opacity 0.3s' }}
                 opacity={opacity}
@@ -578,6 +856,23 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                   />
                 )}
 
+                {/* Health score ring */}
+                {!isHovered && !node.project.isArchived && (
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={node.radius + 7}
+                    fill="none"
+                    stroke={healthColor}
+                    strokeWidth={1}
+                    opacity={0.15}
+                    strokeDasharray={healthDashArray}
+                    strokeLinecap="round"
+                    className="pointer-events-none"
+                    style={{ transition: 'stroke-dasharray 0.6s ease-out' }}
+                  />
+                )}
+
                 {/* Shadow */}
                 <circle
                   cx={node.x + 2}
@@ -586,7 +881,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                   fill="rgba(0,0,0,0.3)"
                 />
 
-                {/* Main circle */}
+                {/* Main circle with inner shadow */}
                 <circle
                   cx={node.x}
                   cy={node.y}
@@ -598,14 +893,25 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                   strokeWidth={isHovered ? 2 : isDeepAnalyzed ? 1.5 : 1}
                 />
 
-                {/* Category icon in center for larger nodes */}
+                {/* Inner shadow for depth */}
+                <circle
+                  cx={node.x}
+                  cy={node.y - 1}
+                  r={isHovered ? node.radius : node.radius - 1}
+                  fill="none"
+                  stroke="rgba(255,255,255,0.08)"
+                  strokeWidth={0.5}
+                  className="pointer-events-none"
+                />
+
+                {/* Category icon in center — larger for better visibility */}
                 {node.radius >= 12 && (
                   <text
                     x={node.x}
                     y={node.y + 1}
                     textAnchor="middle"
                     dominantBaseline="central"
-                    fontSize={node.radius * 0.7}
+                    fontSize={node.radius * 0.8}
                     className="pointer-events-none select-none"
                   >
                     {categoryIcon(node.project.category)}
@@ -626,7 +932,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                   {node.project.name.length > 18 ? node.project.name.slice(0, 16) + '…' : node.project.name}
                 </text>
 
-                {/* Activity indicator - small dot for recently active */}
+                {/* Activity indicator */}
                 {node.project.pushedAt && (Date.now() - new Date(node.project.pushedAt).getTime() < 7 * 24 * 60 * 60 * 1000) && (
                   <circle
                     cx={node.x + node.radius * 0.65}
@@ -657,7 +963,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
             strokeWidth={1}
           />
 
-          {/* Minimap viewport rectangle */}
+          {/* Minimap viewport + nodes */}
           {(() => {
             const scaleX = minimapWidth / dimensions.width;
             const scaleY = minimapHeight / dimensions.height;
@@ -672,11 +978,11 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
 
             return (
               <>
-                {/* Minimap nodes */}
+                {/* Minimap nodes — slightly larger */}
                 {nodes.map(node => {
                   const mx = offsetX + node.x * scale;
                   const my = offsetY + node.y * scale;
-                  const mr = Math.max(1.5, node.radius * scale * 0.5);
+                  const mr = Math.max(2, node.radius * scale * 0.6);
                   const dimmed = isNodeDimmed(node);
                   return (
                     <circle
@@ -690,15 +996,26 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                     />
                   );
                 })}
-                {/* Viewport outline */}
+                {/* Viewport outline with glow */}
                 <rect
                   x={vpX}
                   y={vpY}
                   width={vpW}
                   height={vpH}
                   fill="none"
-                  stroke="rgba(16,185,129,0.5)"
+                  stroke="rgba(16,185,129,0.4)"
                   strokeWidth={1}
+                  rx={1}
+                  filter="url(#minimapGlow)"
+                />
+                <rect
+                  x={vpX}
+                  y={vpY}
+                  width={vpW}
+                  height={vpH}
+                  fill="none"
+                  stroke="rgba(16,185,129,0.6)"
+                  strokeWidth={0.5}
                   rx={1}
                 />
               </>
@@ -757,7 +1074,6 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
           >
             Deps
           </text>
-          {/* Deep analyzed legend */}
           <circle
             cx={dimensions.width - minimapWidth - minimapPadding + 6}
             cy={minimapPadding + minimapHeight + 43}
@@ -809,6 +1125,41 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
       >
         <RotateCcw className="w-3.5 h-3.5" />
       </button>
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          className="absolute z-50 min-w-[160px] rounded-lg border border-border/30 bg-card/95 backdrop-blur-md shadow-xl py-1 text-xs"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => handleContextAction('github', contextMenu.nodeId)}
+            className="w-full text-left px-3 py-1.5 hover:bg-emerald-500/10 text-foreground/70 hover:text-emerald-400 transition-colors flex items-center gap-2"
+          >
+            <ExternalLink className="w-3 h-3" /> Open in GitHub
+          </button>
+          <button
+            onClick={() => handleContextAction('analyze', contextMenu.nodeId)}
+            className="w-full text-left px-3 py-1.5 hover:bg-emerald-500/10 text-foreground/70 hover:text-emerald-400 transition-colors flex items-center gap-2"
+          >
+            <Sparkles className="w-3 h-3" /> Deep Analyze
+          </button>
+          <button
+            onClick={() => handleContextAction('bookmark', contextMenu.nodeId)}
+            className="w-full text-left px-3 py-1.5 hover:bg-amber-500/10 text-foreground/70 hover:text-amber-400 transition-colors flex items-center gap-2"
+          >
+            <Bookmark className="w-3 h-3" /> Bookmark
+          </button>
+          <div className="h-px bg-border/20 my-1" />
+          <button
+            onClick={() => handleContextAction('details', contextMenu.nodeId)}
+            className="w-full text-left px-3 py-1.5 hover:bg-card/60 text-foreground/70 hover:text-foreground/90 transition-colors flex items-center gap-2"
+          >
+            <FileText className="w-3 h-3" /> View Details
+          </button>
+        </div>
+      )}
 
       {/* Hover card */}
       {hoveredNode && (

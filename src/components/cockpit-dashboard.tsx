@@ -9,6 +9,8 @@ import { StatsOverview } from '@/components/stats-overview';
 import { DetailPanel } from '@/components/detail-panel';
 import { SmartSearchDialog } from '@/components/smart-search-dialog';
 import { CompareDialog } from '@/components/compare-dialog';
+import { ExportDialog } from '@/components/export-dialog';
+import { DependencyNetwork } from '@/components/dependency-network';
 import { ActivityHeatmap } from '@/components/activity-heatmap';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { Badge } from '@/components/ui/badge';
@@ -24,9 +26,37 @@ import {
   Microscope, Calendar, FileText, Keyboard,
   ShieldCheck, AlertTriangle, Archive, GitCompare,
   Building2, BarChart3, RefreshCw, Microscope as DeepAnalyzeIcon,
+  Download, Share2,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
-import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+
+// --- AnimatedCounter: counts from 0 to target on mount ---
+function AnimatedCounter({ target, duration = 800 }: { target: number; duration?: number }) {
+  const [value, setValue] = useState(0);
+  const ref = useRef<ReturnType<typeof requestAnimationFrame>>();
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    const startTime = performance.now();
+    const animate = (now: number) => {
+      const elapsed = now - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // Ease out cubic
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setValue(Math.round(eased * target));
+      if (progress < 1) {
+        ref.current = requestAnimationFrame(animate);
+      }
+    };
+    ref.current = requestAnimationFrame(animate);
+    return () => { if (ref.current) cancelAnimationFrame(ref.current); };
+  }, [target, duration]);
+
+  return <>{value}</>;
+}
 
 type ActivityFilter = 'all' | 'active' | 'stale' | 'analyzed';
 
@@ -49,6 +79,7 @@ export function CockpitDashboard() {
   const [isLoadingOrgRepos, setIsLoadingOrgRepos] = useState(false);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   // Check if org repos are already loaded
   const hasOrgRepos = useMemo(() => projects.some(p => p.ownerType === 'Organization'), [projects]);
@@ -81,6 +112,10 @@ export function CockpitDashboard() {
       if (e.key === '4' && e.metaKey) {
         e.preventDefault();
         setViewMode('stats');
+      }
+      if (e.key === '5' && e.metaKey) {
+        e.preventDefault();
+        setViewMode('network');
       }
       if (e.key === '?' && e.shiftKey) {
         e.preventDefault();
@@ -337,8 +372,20 @@ export function CockpitDashboard() {
       {/* Onboarding Tour */}
       <OnboardingTour />
 
-      {/* Top bar — minimal, dense with gradient */}
-      <header className="flex items-center gap-3 px-4 py-2 bg-gradient-to-r from-card/50 via-card/30 to-card/50 backdrop-blur-sm shrink-0 relative">
+      {/* Top bar — glassmorphism with animated gradient */}
+      <header
+        className="flex items-center gap-3 px-4 py-2 shrink-0 relative backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_1px_3px_rgba(0,0,0,0.2)]"
+        style={{
+          background: 'linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(20,20,25,0.8) 30%, rgba(20,20,25,0.85) 70%, rgba(245,158,11,0.04) 100%)',
+          animation: 'headerGradient 8s ease-in-out infinite alternate',
+        }}
+      >
+        <style>{`
+          @keyframes headerGradient {
+            0% { background: linear-gradient(135deg, rgba(16,185,129,0.06) 0%, rgba(20,20,25,0.8) 30%, rgba(20,20,25,0.85) 70%, rgba(245,158,11,0.04) 100%); }
+            100% { background: linear-gradient(135deg, rgba(245,158,11,0.04) 0%, rgba(20,20,25,0.85) 30%, rgba(20,20,25,0.8) 70%, rgba(16,185,129,0.06) 100%); }
+          }
+        `}</style>
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-emerald-400" />
           <span className="text-sm font-bold tracking-tight">Git Atlas</span>
@@ -349,17 +396,17 @@ export function CockpitDashboard() {
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <span className="font-medium text-foreground/80">{username}</span>
           <span className="text-muted-foreground/30">•</span>
-          <span>{projects.length} repos</span>
+          <span><AnimatedCounter target={projects.length} /> repos</span>
           <span className="text-muted-foreground/30">•</span>
-          <Star className="w-3 h-3 text-amber-400" />{totalStars}
+          <Star className="w-3 h-3 text-amber-400" /><AnimatedCounter target={totalStars} />
           <span className="text-muted-foreground/30">•</span>
-          <GitFork className="w-3 h-3 text-blue-400" />{totalForks}
+          <GitFork className="w-3 h-3 text-blue-400" /><AnimatedCounter target={totalForks} />
           <span className="text-muted-foreground/30">•</span>
-          <Activity className="w-3 h-3 text-emerald-400" />{recentlyActive} active
+          <Activity className="w-3 h-3 text-emerald-400" /><AnimatedCounter target={recentlyActive} /> active
           {deepAnalyzedCount > 0 && (
             <>
               <span className="text-muted-foreground/30">•</span>
-              <Microscope className="w-3 h-3 text-emerald-400" />{deepAnalyzedCount} deep
+              <Microscope className="w-3 h-3 text-emerald-400" /><AnimatedCounter target={deepAnalyzedCount} /> deep
             </>
           )}
           {isAnalyzing && (
@@ -373,8 +420,12 @@ export function CockpitDashboard() {
           {isDeepAnalyzing && (
             <>
               <span className="text-muted-foreground/30">•</span>
-              <span className="text-emerald-400 animate-pulse flex items-center gap-1">
-                <Loader2 className="w-3 h-3 animate-spin" /> {deepAnalyzeProgress}
+              {/* Pulsing emerald ring around progress */}
+              <span className="relative flex items-center gap-1">
+                <span className="absolute -inset-1 rounded-full border border-emerald-400/30 animate-ping" style={{ animationDuration: '2s' }} />
+                <span className="relative text-emerald-400 animate-pulse flex items-center gap-1">
+                  <Loader2 className="w-3 h-3 animate-spin" /> {deepAnalyzeProgress}
+                </span>
               </span>
             </>
           )}
@@ -389,14 +440,14 @@ export function CockpitDashboard() {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          {/* Search */}
-          <div className="relative w-40">
+          {/* Search with animated width on focus */}
+          <div className="relative w-40 focus-within:w-56 transition-all duration-300">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground/40" />
             <Input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Filter..."
-              className="h-7 pl-7 text-xs bg-card/30 border-border/20 placeholder:text-muted-foreground/30"
+              className="h-7 pl-7 text-xs bg-card/30 border-border/20 placeholder:text-muted-foreground/30 focus:border-emerald-500/30 focus:shadow-[0_0_8px_rgba(16,185,129,0.1)] transition-all duration-300"
             />
             {searchQuery && (
               <button onClick={() => setSearchQuery('')} className="absolute right-1.5 top-1/2 -translate-y-1/2">
@@ -411,7 +462,7 @@ export function CockpitDashboard() {
               variant="outline"
               size="sm"
               onClick={() => setSmartSearchOpen(true)}
-              className="h-7 gap-1 text-xs border-amber-500/30 text-amber-400 hover:bg-amber-500/10 px-2"
+              className="h-7 gap-1 text-xs border-amber-500/30 text-amber-400 hover:bg-gradient-to-r hover:from-amber-500/10 hover:to-amber-600/5 hover:shadow-[0_0_10px_rgba(245,158,11,0.1)] hover:border-amber-500/50 transition-all px-2"
               title="Smart Search: Ask if you already have a tool for X"
             >
               <Zap className="w-3 h-3" />Do I have...?
@@ -423,10 +474,21 @@ export function CockpitDashboard() {
             variant="outline"
             size="sm"
             onClick={() => setCompareOpen(true)}
-            className="h-7 gap-1 text-xs border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 px-2"
+            className="h-7 gap-1 text-xs border-cyan-500/30 text-cyan-400 hover:bg-gradient-to-r hover:from-cyan-500/10 hover:to-cyan-600/5 hover:shadow-[0_0_10px_rgba(6,182,212,0.1)] hover:border-cyan-500/50 transition-all px-2"
             title="Compare two projects side-by-side"
           >
             <GitCompare className="w-3 h-3" />Compare
+          </Button>
+
+          {/* Export */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setExportOpen(true)}
+            className="h-7 gap-1 text-xs border-emerald-500/30 text-emerald-400 hover:bg-gradient-to-r hover:from-emerald-500/10 hover:to-emerald-600/5 hover:shadow-[0_0_10px_rgba(16,185,129,0.1)] hover:border-emerald-500/50 transition-all px-2"
+            title="Export portfolio as Markdown or JSON"
+          >
+            <Download className="w-3 h-3" />Export
           </Button>
 
           {/* Org Repos */}
@@ -436,7 +498,7 @@ export function CockpitDashboard() {
               size="sm"
               onClick={handleFetchOrgRepos}
               disabled={isLoadingOrgRepos}
-              className="h-7 gap-1 text-xs border-orange-500/30 text-orange-400 hover:bg-orange-500/10 px-2"
+              className="h-7 gap-1 text-xs border-orange-500/30 text-orange-400 hover:bg-gradient-to-r hover:from-orange-500/10 hover:to-orange-600/5 hover:shadow-[0_0_10px_rgba(249,115,22,0.1)] hover:border-orange-500/50 transition-all px-2"
               title="Load ProjectBroadside organization repos"
             >
               {isLoadingOrgRepos ? (
@@ -454,7 +516,7 @@ export function CockpitDashboard() {
               size="sm"
               onClick={handleDeepAnalyzeAll}
               disabled={isDeepAnalyzing}
-              className={`h-7 gap-1 text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 px-2 ${hasUnanalyzedRepos && !isDeepAnalyzing ? 'shimmer-button' : ''}`}
+              className={`h-7 gap-1 text-xs border-emerald-500/30 text-emerald-400 hover:bg-gradient-to-r hover:from-emerald-500/10 hover:to-emerald-600/5 hover:shadow-[0_0_10px_rgba(16,185,129,0.1)] hover:border-emerald-500/50 transition-all px-2 ${hasUnanalyzedRepos && !isDeepAnalyzing ? 'shimmer-button' : ''}`}
               title="Deep analyze all repos with AI"
             >
               {isDeepAnalyzing ? (
@@ -471,7 +533,7 @@ export function CockpitDashboard() {
             size="sm"
             onClick={handleBatchRewriteReadmes}
             disabled={isRewritingReadmes || isDeepAnalyzing}
-            className="h-7 gap-1 text-xs border-violet-500/30 text-violet-400 hover:bg-violet-500/10 px-2"
+            className="h-7 gap-1 text-xs border-violet-500/30 text-violet-400 hover:bg-gradient-to-r hover:from-violet-500/10 hover:to-violet-600/5 hover:shadow-[0_0_10px_rgba(139,92,246,0.1)] hover:border-violet-500/50 transition-all px-2"
             title="Generate AI READMEs for all deep-analyzed repos"
           >
             {isRewritingReadmes ? (
@@ -519,6 +581,13 @@ export function CockpitDashboard() {
               title="Stats Overview (⌘4)"
             >
               <BarChart3 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode('network')}
+              className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'network' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Dependency Network (⌘5)"
+            >
+              <Share2 className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -754,6 +823,17 @@ export function CockpitDashboard() {
                 className="h-full"
               >
                 <StatsOverview projects={filteredProjects} />
+              </motion.div>
+            ) : viewMode === 'network' ? (
+              <motion.div
+                key="network"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className="h-full"
+              >
+                <DependencyNetwork projects={filteredProjects} onProjectClick={(p) => setSelectedProject(p)} />
               </motion.div>
             ) : (
               <motion.div
@@ -1027,6 +1107,9 @@ export function CockpitDashboard() {
       {/* Compare dialog */}
       <CompareDialog open={compareOpen} onOpenChange={setCompareOpen} />
 
+      {/* Export dialog */}
+      <ExportDialog open={exportOpen} onOpenChange={setExportOpen} />
+
       {/* Keyboard shortcuts overlay */}
       <AnimatePresence>
         {showKeyboardHelp && (
@@ -1054,6 +1137,7 @@ export function CockpitDashboard() {
                 <ShortcutItem keys="⌘2" description="Grid view" />
                 <ShortcutItem keys="⌘3" description="Timeline view" />
                 <ShortcutItem keys="⌘4" description="Stats overview" />
+                <ShortcutItem keys="⌘5" description="Dependency network" />
                 <ShortcutItem keys="?" description="Show this help" />
                 <ShortcutItem keys="Esc" description="Close dialogs" />
               </div>

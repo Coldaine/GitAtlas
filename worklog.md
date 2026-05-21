@@ -518,5 +518,222 @@ Stage Summary:
 - "Agentic memory" phase: auto-suggest tools when user describes a need
 - Activity heatmap could be more visible (needs horizontal scroll in left panel)
 - Commit activity API slow on first load — add loading spinner
+
+---
+Task ID: 11-b
+Agent: Enhanced Detail Panel + Graph Visuals
+Task: Make detail panel and graph significantly more visually impressive and feature-rich
+
+Work Log:
+- Enhanced `/src/components/detail-panel.tsx` with 11 major improvements:
+  1. **Animated section reveals**: Each section uses framer-motion with staggered fade-in (`initial={{ opacity: 0, y: 10 }}`, `animate={{ opacity: 1, y: 0 }}`) with increasing delays per section via custom variants
+  2. **Enhanced gradient header**: 3px bar with animated shimmer effect (CSS `@keyframes shimmerSlide` moving a bright spot across the gradient), plus a subtle glow below the bar using a gradient overlay
+  3. **Better health score visualization**: Larger 32px ring with the score number inside, plus a colored label ("Healthy" / "Moderate" / "Stale") next to it. Pulse animation for "Healthy" projects via CSS `@keyframes healthPulse`
+  4. **Richer tech stack boxes**: Larger boxes with subtle diagonal stripe background pattern, large watermark letter (first char of framework name at 0.06 opacity), framework usage count across all projects (`×3` badge), and tooltip showing how many other projects use that framework
+  5. **Enhanced file tree**: File count summary ("42 files in 8 directories") in header, animated folder icons (framer-motion rotate on expand/collapse), file type icons based on extension with different colors for .ts/.py/.rs/.json/.md/.yml/.css/.html (using dedicated FILE_TYPE_ICONS mapping with colored FileCode/Terminal/FileJson/FileType icons)
+  6. **Better dependency section**: Search/filter input for dependencies, "shared with" indicator showing colored dots representing other projects that share each dependency (up to 4 dots + overflow count), total dependency count in header
+  7. **Similar projects cards**: Similarity score bar visualization (colored progress bar), larger colored category dot with ring, score percentage aligned right
+  8. **README diff view**: Third tab "Diff" alongside "Generated" and "Original" tabs, highlights differences using red/green coloring with +/- line prefixes, line-by-line comparison
+  9. **Bookmark button**: Star/bookmark button next to GitHub button, uses localStorage key `git-atlas-bookmarks`, filled amber star when bookmarked, outline when not, with toast notifications
+  10. **Copy README button**: Copy button for proposed README content in README section header
+  11. **Share button**: Share2 icon button that copies a markdown summary (name, description, tech stack, category, stars, URL) to clipboard
+
+- Enhanced `/src/components/project-graph.tsx` with 9 major improvements:
+  1. **Ambient floating particles**: 25 SVG circles with very low opacity (0.03-0.08) that drift slowly, creating a "living space" feel. Particles wrap around edges and have sinusoidal opacity variation
+  2. **Animated connection paths**: When hovering a node, connected edges show a glowing pulse dot traveling along the edge (computed position using `source + (target - source) * pulseProgress`), animated via requestAnimationFrame
+  3. **Better node styling**: Inner shadow for depth (subtle highlight circle), health score ring around each node (fills based on health percentage using strokeDasharray), larger category icon (0.8x radius instead of 0.7x)
+  4. **Hover card improvements**: Enhanced hover card now shows health score ring, top 3 framework badges, dependency count, mini activity sparkline bar chart, and deep-analysis shield icon
+  5. **Category cluster backgrounds**: Very subtle blurred SVG circles (filter: clusterBlur with stdDeviation=30) at each category centroid, creating soft colored cloud regions behind clusters
+  6. **Edge bundling/hub glow**: Nodes with ≥4 connections get a subtle strong glow effect, creating a "hub" appearance where many edges converge
+  7. **Double-click to zoom**: Double-clicking a node smoothly animates zoom to 2x centered on that node (easeInOutQuad interpolation over 400ms)
+  8. **Right-click context menu**: On right-clicking a node, shows a styled context menu with "Open in GitHub", "Deep Analyze", "Bookmark", and "View Details" options, each with appropriate icons and hover colors
+  9. **Better minimap**: Minimap viewport outline has a glow effect (filter: minimapGlow), minimap nodes slightly larger (2px minimum, 0.6x scale), dual-stroke viewport outline for visibility
+
+- Enhanced `/src/components/project-hover-card.tsx`:
+  - Added health score visualization (ring + label)
+  - Added top 3 framework badges
+  - Added dependency count with Package icon
+  - Added mini activity sparkline (8-bar SVG chart colored by category)
+  - Added ShieldCheck icon for deep-analyzed projects
+  - Increased card height to accommodate new info
+
+- All changes lint clean with 0 errors
+
+Stage Summary:
+- Detail panel feels like a premium code analysis report with staggered animations, shimmer header, rich tech stack cards, diff view, bookmarks, sharing
+- Graph feels like a living ecosystem with floating particles, traveling pulse dots, hub glows, cluster clouds, smooth zoom animations, context menus
+- Hover cards significantly more informative with health scores, framework badges, dep counts, activity sparklines
+- All improvements are visually stunning and add genuine utility
 - Right panel filter tabs could use URL state for persistence
 - Stats overview could add trend comparisons (month-over-month)
+
+---
+Task ID: 11-c
+Agent: Feature Developer
+Task: Add Export Portfolio + Dependency Network View
+
+Work Log:
+- Updated `/src/lib/types.ts` — Added `'network'` to ViewMode type: `'graph' | 'grid' | 'timeline' | 'stats' | 'network'`
+- Created `/src/components/export-dialog.tsx` — Export Portfolio dialog:
+  - Two format tabs: Markdown and JSON
+  - Markdown export: portfolio header with stats, project table, per-project details, framework usage summary, shared dependencies summary
+  - JSON export: structured data with stats, projects (including health status), framework/dependency summaries
+  - Preview in scrollable area with syntax-highlighted display
+  - "Copy to Clipboard" button with success feedback
+  - "Download" button that creates a Blob and triggers file download
+  - Character count and format indicator in footer
+  - Dark theme with emerald accents matching app aesthetic
+  - Stats pills showing total stars, analyzed count, repo count
+- Created `/src/components/dependency-network.tsx` — Chord diagram / Dependency Network view:
+  - SVG-based rendering with responsive sizing via ResizeObserver
+  - Projects shown as arcs around a circle, color-coded by category
+  - Arc sizes proportional to total shared dependency weight
+  - Ribbons (curved quadratic bezier paths) between projects sharing dependencies
+  - Ribbon thickness proportional to number of shared deps
+  - Ribbon gradients from source category color to target category color
+  - Hover on project arc: highlights all its connections, dims others
+  - Hover on ribbon: shows tooltip with shared dependency names
+  - Threshold slider to control minimum shared deps to display (default: 2)
+  - Category color legend at bottom
+  - Center label: "X connections across Y projects"
+  - Zoom/pan support (mouse wheel + drag)
+  - Zoom controls (zoom in/out/reset) with percentage indicator
+  - Framer-motion entrance animations (ribbons draw in sequentially)
+  - Click on arc to open project detail panel
+  - Empty state with helpful message when not enough data
+- Updated `/src/components/cockpit-dashboard.tsx`:
+  - Added Export button (Download icon, emerald accent) between Compare and Org Repos buttons
+  - Added Network view toggle button (Share2 icon) in view mode selector with ⌘5 shortcut
+  - Added DependencyNetwork component rendering in center area with AnimatePresence transitions
+  - Added ExportDialog component rendering alongside other dialogs
+  - Added `exportOpen` state for export dialog
+  - Added ⌘5 keyboard shortcut for network view
+  - Added ⌘5 entry in keyboard shortcuts overlay
+  - Imported Download and Share2 icons from lucide-react
+- Ran `bun run lint` — 0 errors
+
+Stage Summary:
+- Export Portfolio dialog: Full Markdown/JSON export with preview, copy, and download
+- Dependency Network view: Stunning chord diagram showing shared dependencies across projects
+- Both features fully integrated into cockpit dashboard with keyboard shortcuts
+- 5 view modes now available: graph, grid, timeline, stats, network
+
+## Current Project Status
+- **28/28 repos deep analyzed** — all features fully unlocked
+- **5 views**: Force-directed graph, card grid, timeline, stats overview, dependency network
+- **Export**: Markdown/JSON portfolio export with copy + download
+- **Dependency Network**: Chord diagram with threshold slider, hover tooltips, zoom/pan
+- **Commit Heatmap**: 1025 commits, 114 active days
+- **Stats Overview**: Portfolio cards, language/category/framework charts, health distribution
+- **Detail Panel**: Gradient header, health score ring, skill dots, tech stack, copy summary
+- **Graph**: Category clusters, gradient edges, deep-analysis glow, reset view, minimap
+- **Smart Search**: "Do I already have X?" with deep analysis data
+- **Compare**: Side-by-side project comparison
+- **Keyboard Shortcuts**: /, ⌘1/2/3/4/5, ?, Esc
+- **Visual Polish**: Custom scrollbar, shimmer effects, hover tooltips, page load animation
+
+## Unresolved / Next Steps
+- Mobile responsiveness (current layout is desktop-only)
+- Push proposed READMEs back to GitHub (requires write permissions)
+- "Agentic memory" phase: auto-suggest tools when user describes a need
+- Activity heatmap could be more visible (needs horizontal scroll in left panel)
+- Dependency network could add animation for threshold changes
+- Right panel filter tabs could use URL state for persistence
+
+---
+Task ID: 12
+Agent: Main (Session Continuation)
+Task: QA + Comprehensive Styling & Feature Enhancements
+
+Work Log:
+- Performed initial QA via agent-browser on existing app
+- Identified all features working: 28 repos loaded, 28/28 deep-analyzed, 4 views, smart search, compare, keyboard shortcuts
+- Found minor issues: TypeScript clean, lint clean, DialogDescription warning (cosmetic)
+- Launched 3 parallel enhancement agents:
+  - Agent 11-a: Grid cards, header, stats overview styling
+  - Agent 11-b: Detail panel + graph visuals
+  - Agent 11-c: Export portfolio + dependency network view
+- All 3 agents completed successfully with 0 lint errors
+- Performed final QA via agent-browser:
+  - Verified glassmorphism header with animated gradient
+  - Verified animated stat counters (repos, stars, forks)
+  - Verified Export button and Export dialog (Markdown/JSON)
+  - Verified Dependency Network view (chord diagram)
+  - Verified Network view toggle (⌘5 shortcut)
+  - Verified Grid view with gradient borders, health bars, bookmark stars
+  - Verified Detail panel with bookmark button, share button, tech stack boxes
+  - Verified Stats view with gradient cards and health ring chart
+  - Verified graph with floating particles, pulse edges, context menus
+  - Verified no page errors
+- Screenshots saved to /home/z/my-project/download/
+
+Stage Summary:
+- Major styling overhaul: Glassmorphism header, animated counters, gradient cards, gradient borders on grid cards, animated health bars, bookmark stars
+- Graph enhancement: Floating particles, animated pulse edges, health score rings, double-click zoom, right-click context menu, category cluster clouds, hub glow
+- Detail panel enhancement: Animated section reveals, shimmer header, larger health ring, richer tech stack cards, file count header, dep search/filter, similar project bars, README diff view, bookmark/share/copy buttons
+- New features: Export Portfolio (Markdown/JSON with copy + download), Dependency Network view (chord diagram with threshold slider, hover, zoom/pan)
+- 5 view modes: graph, grid, timeline, stats, network
+- Keyboard shortcuts: /, ⌘1/2/3/4/5, ?, Esc
+- All lint checks pass with 0 errors
+
+## Current Project Status
+- **28/28 repos deep analyzed** — all features fully unlocked
+- **5 views**: Force-directed graph, card grid, timeline, stats overview, dependency network
+- **Export**: Markdown/JSON portfolio export with copy + download
+- **Dependency Network**: Chord diagram with threshold slider, hover tooltips, zoom/pan
+- **Bookmarking**: Star projects for quick access (persisted in localStorage)
+- **Commit Heatmap**: 1025 commits, 114 active days
+- **Stats Overview**: Gradient cards, animated counters, health ring chart, framework popularity
+- **Detail Panel**: Shimmer header, health ring, animated sections, tech stack boxes, file tree with file count, dep search/filter, README diff view, bookmark/share/copy
+- **Graph**: Floating particles, pulse edges, health rings, cluster clouds, hub glow, double-click zoom, right-click context menu
+- **Grid Cards**: Gradient borders, animated health bars, framework icon boxes, bookmark stars
+- **Header**: Glassmorphism with animated gradient, animated stat counters, enhanced search
+- **Smart Search**: "Do I already have X?" with deep analysis data
+- **Compare**: Side-by-side project comparison
+- **Keyboard Shortcuts**: /, ⌘1/2/3/4/5, ?, Esc
+- **Onboarding Tour**: 4-step animated tour for new visitors
+
+## Unresolved / Next Steps
+- Mobile responsiveness (current layout is desktop-only 3-panel)
+- Push proposed READMEs back to GitHub (requires write permissions)
+- "Agentic memory" phase: auto-suggest tools when user describes a need in real-time
+- Minor console warning: DialogDescription missing (cosmetic, from Radix UI)
+- Dependency network animation could be smoother for threshold changes
+- Right panel filter tabs could use URL state for persistence
+- Stats overview could add trend comparisons (month-over-month)
+- Activity heatmap could benefit from horizontal scroll in left panel
+
+---
+Task ID: 11-a
+Agent: Styling Enhancement Agent
+Task: Major Styling Enhancements — Grid Cards, Header, Stats Overview
+
+Work Log:
+- Enhanced Grid Cards (`/src/components/project-grid.tsx`) — Full rewrite:
+  - Gradient border effect: Wrapper div with `linear-gradient(135deg, catColor60, transparent, catColor40)` that pulses on hover (opacity 40→80)
+  - Animated health bar: Thin horizontal bar below accent line showing project health score (0-100) with animated width on mount via framer-motion
+  - Better hover state: Scale 1.03 + y:-4 lift, gradient border glows brighter, subtle radial gradient from category color
+  - Enhanced metadata row: Framework icon boxes (colored squares with first letter), dependency count with mini bar, lifespan indicator (Timer icon)
+  - Deep analysis richness: Code signature badges with colored pill styling (each framework/pattern gets its own color from FW_COLORS map)
+  - Bookmark star: NEW feature — star icon in top-right corner, click to bookmark/favorite. Uses localStorage key `git-atlas-bookmarks`. Filled amber star when bookmarked, outline when not
+  - Better typography: Larger project name (text-[15px]), better spacing, more readable summary
+- Enhanced Header (`/src/components/cockpit-dashboard.tsx`):
+  - Glassmorphism header: backdrop-blur-xl, animated gradient background (shifts between emerald and amber tints over 8s), inner shadow
+  - Animated stat counters: Created `AnimatedCounter` component (counts from 0 to target with ease-out cubic, 800ms). Applied to repos, stars, forks, active, deep analyzed counts
+  - Better button styling: Each button gets gradient background on hover matching its accent color, plus subtle glow shadow
+  - Pulsing activity indicator: When deep analysis is running, added pulsing emerald ring around progress text
+  - Enhanced search: Input widens from w-40 to w-56 on focus, emerald glow on focus
+- Enhanced Stats Overview (`/src/components/stats-overview.tsx`) — Full rewrite:
+  - Gradient stat cards: Each card has subtle gradient background matching icon color with animated counter
+  - Better chart styling: Category bars have rounded tops, shared dependency bars have gradient fill
+  - Framework popularity: Shows framework logos/initials with colored boxes, custom bar visualization with animated widths
+  - Health distribution: Animated ring chart with central "Health" score number (computed from healthy*100 + moderate*50 + stale*10 / total*100)
+  - Shared dependencies: Alternating row backgrounds, subtle hover effect, animated bar widths with gradient fill
+  - AnimatedCounter component: Reusable with requestAnimationFrame, ease-out cubic, 1000ms
+- All lint checks pass with 0 errors
+
+Stage Summary:
+- Grid cards: gradient borders, health bar, bookmark star, colored framework pills, lifespan indicator
+- Header: glassmorphism with animated gradient, counting stat animations, gradient button hovers, pulsing analysis indicator, expanding search
+- Stats overview: gradient stat cards with animated counters, custom framework bars, health ring chart with central score, enhanced shared dependencies
+- No component interfaces/props changed — fully backwards compatible
