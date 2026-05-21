@@ -346,3 +346,13 @@
 .feed-item-hover:hover {
   box-shadow: 0 0 12px 2px oklch(0.696 0.17 162.48 / 0.08);
 }
+
+/* Needs Attention subtle pulse animation */
+@keyframes needsAttentionPulse {
+  0%, 100% { border-color: rgba(249, 115, 22, 0.06); }
+  50% { border-color: rgba(249, 115, 22, 0.18); }
+}
+
+.needs-attention-pulse {
+  animation: needsAttentionPulse 3s ease-in-out infinite;
+}

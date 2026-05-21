@@ -5,7 +5,7 @@ import {
   Search, Network, LayoutGrid, Calendar, BarChart3, Share2,
   Microscope, FileText, Zap, GitCompare, Download, Building2,
   ChevronRight, Clock, Tag, ArrowUp, ArrowDown, CornerDownLeft, XCircle,
-  Target, Bookmark,
+  Target, Bookmark, GitBranch, Sparkles,
 } from 'lucide-react';
 import { Project, ViewMode, CATEGORY_COLORS } from '@/lib/types';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
@@ -36,6 +36,7 @@ interface CommandPaletteProps {
   onCompare: () => void;
   onExport: () => void;
   onOrgRepos: () => void;
+  onAIRecommendations: () => void;
   onToggleTag: (tag: string) => void;
   tags: [string, number][];
   activeTags: string[];
@@ -95,6 +96,7 @@ export function CommandPalette({
   onCompare,
   onExport,
   onOrgRepos,
+  onAIRecommendations,
   onToggleTag,
   tags,
   activeTags,
@@ -128,6 +130,7 @@ export function CommandPalette({
       { mode: 'network', label: 'Dependency Network', icon: <Share2 className="w-4 h-4" />, shortcut: '⌘5' },
       { mode: 'radar', label: 'Tech Radar', icon: <Target className="w-4 h-4" />, shortcut: '⌘6' },
       { mode: 'bookmarks', label: 'Bookmarks', icon: <Bookmark className="w-4 h-4" />, shortcut: '⌘7' },
+      { mode: 'relationships', label: 'Relationship Map', icon: <GitBranch className="w-4 h-4" />, shortcut: '⌘8' },
     ];
 
     views.forEach(v => {
@@ -203,6 +206,13 @@ export function CommandPalette({
         icon: <Building2 className="w-4 h-4 text-orange-400" />,
         action: () => { onOrgRepos(); onClose(); },
       },
+      {
+        id: 'action-ai-recommendations',
+        label: 'AI Recommendations',
+        icon: <Sparkles className="w-4 h-4 text-amber-400" />,
+        action: () => { onAIRecommendations(); onClose(); },
+        keywords: 'ai recommend suggest llm gap',
+      },
     ];
 
     actions.forEach(a => {
@@ -231,7 +241,7 @@ export function CommandPalette({
     });
 
     return items;
-  }, [projects, currentView, activeTags, tags, onNavigate, onProjectSelect, onSmartSearch, onDeepAnalyze, onRewriteReadmes, onCompare, onExport, onOrgRepos, onToggleTag, onClose]);
+  }, [projects, currentView, activeTags, tags, onNavigate, onProjectSelect, onSmartSearch, onDeepAnalyze, onRewriteReadmes, onCompare, onExport, onOrgRepos, onAIRecommendations, onToggleTag, onClose]);
 
   // Filter items by query with fuzzy matching
   const filteredItems = useMemo(() => {

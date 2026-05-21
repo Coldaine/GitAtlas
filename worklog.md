@@ -821,3 +821,92 @@ Stage Summary:
 - Activity heatmap could benefit from horizontal scroll in left panel
 - Right panel filter tabs could use URL state for persistence
 - Tech Radar gap analysis could suggest specific project ideas via LLM
+
+---
+Task ID: 14
+Agent: Main (Session Continuation)
+Task: QA + Recent Commits Feed + Relationship Map + AI Recommendations + Styling Polish
+
+Work Log:
+- Performed comprehensive QA via agent-browser:
+  - App loads correctly with 28 repos, 28/28 deep analyzed
+  - All 8 views (graph, grid, timeline, stats, network, radar, bookmarks, relationships) working
+  - Detail panel, smart search, compare, export, command palette all functional
+  - Zero runtime errors, zero console errors
+  - Command Palette opens with ⌘K, fuzzy search works
+  - Tech Radar shows 8-dimension spider chart with gap analysis
+  - Bookmark Dashboard renders correctly (empty state when no bookmarks)
+  - Dependency Network chord diagram renders with threshold slider
+- Created Recent Commits Feed (`/src/components/recent-commits-feed.tsx`):
+  - Fetches from existing GET /api/github/recent-commits endpoint
+  - Shows commits grouped by date (Today, Yesterday, Earlier this week, Older)
+  - Each commit shows: message, repo name, category dot, relative time, language dot, SHA badge
+  - "View on GitHub" external link on each commit
+  - Repo filter dropdown
+  - 10-minute auto-refresh matching API cache
+  - Loading skeleton and error retry states
+- Added tabbed interface in right panel:
+  - Activity tab (existing project feed)
+  - Commits tab (new RecentCommitsFeed)
+- Created Project Relationship Map (`/src/components/relationship-map.tsx`):
+  - SVG-based circle-packing layout with categories as large circles
+  - Projects as inner bubbles sized by composite score (stars + forks + activity)
+  - Interactive hover highlights connections (shared tags/deps)
+  - Click to zoom into category, click project to open detail panel
+  - Zoom/pan with mouse wheel and drag
+  - Connection lines for tag (solid) and dep (dashed blue) relationships
+  - Deep-analyzed indicator dots
+  - Legend and back button for navigation
+- Created AI Recommendations (`/src/components/ai-recommendations.tsx`):
+  - Modal dialog with 5 LLM-generated project recommendations
+  - Each recommendation: name, description, gap-filled badge, rationale, tech stack badges
+  - "Similar to" section linking to existing projects
+  - "Build This" button copying project brief to clipboard
+  - Regenerate button for fresh recommendations
+  - Skeleton loading state
+- Created Recommendations API (`/src/app/api/github/recommendations/route.ts`):
+  - POST endpoint analyzing portfolio composition
+  - Identifies gaps in categories, languages, frameworks
+  - Uses z-ai-web-dev-sdk LLM for generating recommendations
+  - 1-hour cache
+- Added 'relationships' to ViewMode type
+- Added ⌘8 keyboard shortcut for Relationship Map
+- Added "AI Suggestions" button in header (amber, Sparkles icon)
+- Right Panel Visual Enhancements:
+  - Animated aurora gradient at top (emerald → cyan → violet)
+  - Most Starred items with horizontal bar charts
+  - Needs Attention section with warning gradient + pulse animation
+  - Activity feed items with hover arrow indicator
+  - Enlarged Deep Analysis progress ring (56px) with "done" label
+- All changes verified via agent-browser QA
+- Lint passes with 0 errors
+
+Stage Summary:
+- **8 view modes**: graph, grid, timeline, stats, network, radar, bookmarks, relationships
+- **Recent Commits Feed**: Date-grouped commit feed with repo filter
+- **Relationship Map**: Circle-packing visualization with zoom/pan and connection lines
+- **AI Recommendations**: LLM-powered project suggestions based on portfolio gaps
+- **Recommendations API**: Backend endpoint for AI-generated recommendations
+- **Right Panel Polish**: Aurora gradient, bar charts for stars, enhanced Deep Analysis ring
+- **Keyboard shortcuts**: /, ⌘K, ⌘1/2/3/4/5/6/7/8, ?, Esc
+
+## Current Project Status
+- **28/28 repos deep analyzed** — all features fully unlocked
+- **8 views**: Force-directed graph, card grid, timeline, stats overview, dependency network, tech radar, bookmarks, relationship map
+- **AI Recommendations**: LLM-powered suggestions with "Build This" clipboard copy
+- **Recent Commits Feed**: Date-grouped commit history with repo filter
+- **Relationship Map**: Circle-packing layout with category clusters and connections
+- **Command Palette** (⌘K): Full power-user navigation and action search
+- **Commit Heatmap**: 1025 commits, 114 active days
+- **Smart Search**: "Do I already have X?" with deep analysis data
+- **Compare**: Side-by-side project comparison
+- **Export**: Markdown/JSON portfolio export
+- **Keyboard Shortcuts**: /, ⌘K, ⌘1/2/3/4/5/6/7/8, ?, Esc
+
+## Unresolved / Next Steps
+- Mobile responsiveness (current layout is desktop-only)
+- Push proposed READMEs back to GitHub (requires write permissions)
+- "Agentic memory" phase: auto-suggest tools when user describes a need in real-time
+- AI Recommendations could be persisted to DB for cross-session caching
+- Relationship Map could add animation for zoom transitions
+- Right panel filter tabs could use URL state for persistence

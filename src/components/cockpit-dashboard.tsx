@@ -16,6 +16,9 @@ import { ActivityHeatmap } from '@/components/activity-heatmap';
 import { OnboardingTour } from '@/components/onboarding-tour';
 import { TechRadar } from '@/components/tech-radar';
 import { BookmarkDashboard } from '@/components/bookmark-dashboard';
+import { RecentCommitsFeed } from '@/components/recent-commits-feed';
+import { RelationshipMap } from '@/components/relationship-map';
+import { AIRecommendations } from '@/components/ai-recommendations';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -31,7 +34,7 @@ import {
   Building2, BarChart3, RefreshCw, Microscope as DeepAnalyzeIcon,
   Download, Share2, Target, Bookmark as BookmarkIcon,
   Code2, Tag, GitCommit, Hash, Layers, Trophy,
-  PanelLeftClose, PanelLeft, Circle,
+  PanelLeftClose, PanelLeft, Circle, GitBranch,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
@@ -87,6 +90,8 @@ export function CockpitDashboard() {
   const [exportOpen, setExportOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
+  const [aiRecommendationsOpen, setAiRecommendationsOpen] = useState(false);
+  const [rightPanelTab, setRightPanelTab] = useState<'activity' | 'commits'>('activity');
 
   // Check if org repos are already loaded
   const hasOrgRepos = useMemo(() => projects.some(p => p.ownerType === 'Organization'), [projects]);
@@ -137,6 +142,10 @@ export function CockpitDashboard() {
       if (e.key === '7' && e.metaKey) {
         e.preventDefault();
         setViewMode('bookmarks');
+      }
+      if (e.key === '8' && e.metaKey) {
+        e.preventDefault();
+        setViewMode('relationships');
       }
       if (e.key === '?' && e.shiftKey) {
         e.preventDefault();
@@ -506,6 +515,17 @@ export function CockpitDashboard() {
             </Button>
           </div>
 
+          {/* AI Recommendations */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setAiRecommendationsOpen(true)}
+            className="h-7 gap-1 text-xs border-amber-500/30 text-amber-400 hover:bg-gradient-to-r hover:from-amber-500/10 hover:to-amber-600/5 hover:shadow-[0_0_10px_rgba(245,158,11,0.1)] hover:border-amber-500/50 transition-all px-2"
+            title="AI Recommendations — LLM-powered project suggestions"
+          >
+            <Sparkles className="w-3 h-3" />AI Suggestions
+          </Button>
+
           {/* Compare */}
           <Button
             variant="outline"
@@ -639,6 +659,13 @@ export function CockpitDashboard() {
               title="Bookmarks (⌘7)"
             >
               <BookmarkIcon className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode('relationships')}
+              className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'relationships' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Relationship Map (⌘8)"
+            >
+              <GitBranch className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -952,6 +979,17 @@ export function CockpitDashboard() {
               >
                 <BookmarkDashboard projects={filteredProjects} onProjectClick={(p) => setSelectedProject(p)} />
               </motion.div>
+            ) : viewMode === 'relationships' ? (
+              <motion.div
+                key="relationships"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className="h-full"
+              >
+                <RelationshipMap projects={filteredProjects} onProjectClick={(p) => setSelectedProject(p)} />
+              </motion.div>
             ) : (
               <motion.div
                 key="grid"
@@ -982,103 +1020,144 @@ export function CockpitDashboard() {
         </div>
 
         {/* RIGHT PANEL — Activity feed + Insights */}
-        <div className="w-60 shrink-0 border-l border-border/15 bg-card/10 flex flex-col overflow-hidden">
-          <div className="px-3 py-2 border-b border-border/10 flex items-center justify-between">
-            <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider">Recent Activity</h3>
-            <button
-              onClick={handleRefresh}
-              className="text-muted-foreground/30 hover:text-foreground/60 transition-colors"
-              title="Refresh project data"
-            >
-              <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
-            </button>
-          </div>
+        <div className="w-60 shrink-0 border-l border-border/15 bg-card/10 flex flex-col overflow-hidden relative">
+          {/* Aurora gradient at top of right panel */}
+          <div
+            className="absolute top-0 left-0 right-0 h-8 pointer-events-none z-10"
+            style={{
+              background: 'linear-gradient(180deg, rgba(16,185,129,0.08) 0%, rgba(6,182,212,0.04) 40%, transparent 100%)',
+              animation: 'rightPanelAurora 6s ease-in-out infinite alternate',
+            }}
+          />
+          <style>{`
+            @keyframes rightPanelAurora {
+              0% { background: linear-gradient(180deg, rgba(16,185,129,0.08) 0%, rgba(6,182,212,0.04) 40%, transparent 100%); }
+              50% { background: linear-gradient(180deg, rgba(6,182,212,0.08) 0%, rgba(139,92,246,0.04) 40%, transparent 100%); }
+              100% { background: linear-gradient(180deg, rgba(139,92,246,0.06) 0%, rgba(16,185,129,0.04) 40%, transparent 100%); }
+            }
+          `}</style>
 
-          {/* Filter tabs — slightly larger for better clickability */}
-          <div className="flex gap-0.5 px-2 py-1.5 border-b border-border/5">
-            {(['all', 'active', 'stale', 'analyzed'] as const).map(f => (
+          {/* Tab header */}
+          <div className="px-3 pt-2 pb-1 border-b border-border/10 flex items-center gap-1 relative z-20">
+            {(['activity', 'commits'] as const).map(tab => (
               <button
-                key={f}
-                onClick={() => setActivityFilter(f)}
+                key={tab}
+                onClick={() => setRightPanelTab(tab)}
                 className={`text-[10px] px-2.5 py-1 rounded transition-colors ${
-                  activityFilter === f
+                  rightPanelTab === tab
                     ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
                     : 'text-muted-foreground/30 border border-transparent hover:text-muted-foreground/60'
                 }`}
               >
-                {f.charAt(0).toUpperCase() + f.slice(1)}
+                {tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
+            <div className="ml-auto">
+              <button
+                onClick={handleRefresh}
+                className="text-muted-foreground/30 hover:text-foreground/60 transition-colors"
+                title="Refresh project data"
+              >
+                <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
 
-          <ScrollArea className="flex-1">
-            <div className="p-2 space-y-1">
-              {recentProjects.map((p, i) => {
-                const catColor = p.category ? CATEGORY_COLORS[p.category] : '#64748b';
-                const isActive = p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() < 7 * 24 * 60 * 60 * 1000);
-                const isDeepAnalyzed = !!p.deepAnalyzedAt;
-                const categoryIcon = p.category === 'tool' ? '⚙' :
-                  p.category === 'library' ? '📚' :
-                  p.category === 'application' ? '🖥' :
-                  p.category === 'experiment' ? '🧪' :
-                  p.category === 'template' ? '📋' :
-                  p.category === 'config' ? '🔧' : '';
-
-                return (
-                  <motion.button
-                    key={p.id}
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: i * 0.03 }}
-                    onClick={() => setSelectedProject(p)}
-                    id={i === 0 ? 'tour-detail-panel' : undefined}
-                    className="w-full text-left p-2 rounded-md hover:bg-card/40 transition-all group border-l-2 feed-item-hover"
-                    style={{ borderLeftColor: catColor + '60' }}
+          {/* Tab content */}
+          {rightPanelTab === 'activity' ? (
+            <>
+              {/* Filter tabs — slightly larger for better clickability */}
+              <div className="flex gap-0.5 px-2 py-1.5 border-b border-border/5">
+                {(['all', 'active', 'stale', 'analyzed'] as const).map(f => (
+                  <button
+                    key={f}
+                    onClick={() => setActivityFilter(f)}
+                    className={`text-[10px] px-2.5 py-1 rounded transition-colors ${
+                      activityFilter === f
+                        ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                        : 'text-muted-foreground/30 border border-transparent hover:text-muted-foreground/60'
+                    }`}
                   >
-                    <div className="flex items-start gap-2">
-                      <div className="relative mt-0.5">
-                        <span className="w-2 h-2 rounded-full block" style={{ backgroundColor: catColor }} />
-                        {isActive && (
-                          <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                        )}
-                        {isDeepAnalyzed && (
-                          <span className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400/60 deep-analyze-pulse" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-1">
-                          {categoryIcon && <span className="text-[9px] leading-none">{categoryIcon}</span>}
-                          <p className="text-[11px] font-medium text-foreground/80 truncate group-hover:text-foreground transition-colors">
-                            {p.name}
-                          </p>
-                          {isDeepAnalyzed && (
-                            <ShieldCheck className="w-2.5 h-2.5 text-emerald-400/50 shrink-0" />
-                          )}
-                        </div>
-                        {p.summary && (
-                          <p className="text-[9px] text-muted-foreground/40 line-clamp-2 leading-tight mt-0.5">
-                            {p.summary}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-2 mt-1 text-[9px] text-muted-foreground/30">
-                          {p.language && <span>{p.language}</span>}
-                          {p.pushedAt && (
-                            <span className="flex items-center gap-0.5">
-                              <Clock className="w-2.5 h-2.5" />
-                              {formatRelativeTime(new Date(p.pushedAt))}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <ChevronRight className="w-3 h-3 text-muted-foreground/20 group-hover:text-foreground/40 transition-colors mt-1 shrink-0" />
-                    </div>
-                  </motion.button>
-                );
-              })}
-            </div>
-          </ScrollArea>
+                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                  </button>
+                ))}
+              </div>
 
-          {/* Deep Analysis Progress — animated ring */}
+              <ScrollArea className="flex-1">
+                <div className="p-2 space-y-1">
+                  {recentProjects.map((p, i) => {
+                    const catColor = p.category ? CATEGORY_COLORS[p.category] : '#64748b';
+                    const isActive = p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() < 7 * 24 * 60 * 60 * 1000);
+                    const isDeepAnalyzed = !!p.deepAnalyzedAt;
+                    const categoryIcon = p.category === 'tool' ? '⚙' :
+                      p.category === 'library' ? '📚' :
+                      p.category === 'application' ? '🖥' :
+                      p.category === 'experiment' ? '🧪' :
+                      p.category === 'template' ? '📋' :
+                      p.category === 'config' ? '🔧' : '';
+
+                    return (
+                      <motion.button
+                        key={p.id}
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.03 }}
+                        onClick={() => setSelectedProject(p)}
+                        id={i === 0 ? 'tour-detail-panel' : undefined}
+                        className="w-full text-left p-2 rounded-md hover:bg-card/40 transition-all group border-l-2 feed-item-hover"
+                        style={{ borderLeftColor: catColor + '60' }}
+                      >
+                        <div className="flex items-start gap-2">
+                          <div className="relative mt-0.5">
+                            <span className="w-2 h-2 rounded-full block" style={{ backgroundColor: catColor }} />
+                            {isActive && (
+                              <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            )}
+                            {isDeepAnalyzed && (
+                              <span className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400/60 deep-analyze-pulse" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1">
+                              {categoryIcon && <span className="text-[9px] leading-none">{categoryIcon}</span>}
+                              <p className="text-[11px] font-medium text-foreground/80 truncate group-hover:text-foreground transition-colors">
+                                {p.name}
+                              </p>
+                              {isDeepAnalyzed && (
+                                <ShieldCheck className="w-2.5 h-2.5 text-emerald-400/50 shrink-0" />
+                              )}
+                            </div>
+                            {p.summary && (
+                              <p className="text-[9px] text-muted-foreground/40 line-clamp-2 leading-tight mt-0.5">
+                                {p.summary}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-2 mt-1 text-[9px] text-muted-foreground/30">
+                              {p.language && <span>{p.language}</span>}
+                              {p.pushedAt && (
+                                <span className="flex items-center gap-0.5">
+                                  <Clock className="w-2.5 h-2.5" />
+                                  {formatRelativeTime(new Date(p.pushedAt))}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <ChevronRight className="w-3 h-3 text-muted-foreground/10 group-hover:text-foreground/30 transition-all mt-1 shrink-0 group-hover:translate-x-0.5" />
+                        </div>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </ScrollArea>
+            </>
+          ) : (
+            /* Commits tab */
+            <div className="flex-1 overflow-hidden">
+              <RecentCommitsFeed username={username} projects={projects} />
+            </div>
+          )}
+
+          {/* Deep Analysis Progress — larger ring with percentage */}
           <div className="border-t border-border/10 px-3 py-2">
             <div className="flex items-center justify-between mb-1.5">
               <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider flex items-center gap-1">
@@ -1090,21 +1169,24 @@ export function CockpitDashboard() {
               <span className="text-[9px] text-emerald-400/50">{deepAnalyzedCount}/{projects.length}</span>
             </div>
             <div className="flex items-center gap-3">
-              {/* Animated progress ring */}
-              <div className="relative w-10 h-10 shrink-0">
-                <svg viewBox="0 0 36 36" className="w-10 h-10 -rotate-90">
-                  <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="3" />
+              {/* Larger animated progress ring */}
+              <div className="relative w-14 h-14 shrink-0">
+                <svg viewBox="0 0 44 44" className="w-14 h-14 -rotate-90">
+                  <circle cx="22" cy="22" r="17" fill="none" stroke="rgba(255,255,255,0.04)" strokeWidth="3.5" />
                   <circle
-                    cx="18" cy="18" r="14" fill="none" stroke="#10b981" strokeWidth="3"
-                    strokeDasharray={`${(deepAnalyzedCount / Math.max(projects.length, 1)) * 87.96} 87.96`}
+                    cx="22" cy="22" r="17" fill="none" stroke="#10b981" strokeWidth="3.5"
+                    strokeDasharray={`${(deepAnalyzedCount / Math.max(projects.length, 1)) * 106.81} 106.81`}
                     strokeLinecap="round"
                     opacity="0.7"
                     className="progress-ring-animate"
                     style={{ transition: 'stroke-dasharray 0.5s ease-out' }}
                   />
                 </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-emerald-400/70">
-                  {Math.round((deepAnalyzedCount / Math.max(projects.length, 1)) * 100)}%
+                <span className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-[11px] font-bold text-emerald-400/70 leading-none">
+                    {Math.round((deepAnalyzedCount / Math.max(projects.length, 1)) * 100)}%
+                  </span>
+                  <span className="text-[7px] text-muted-foreground/30 leading-none mt-0.5">done</span>
                 </span>
               </div>
               <div className="flex-1">
@@ -1121,9 +1203,11 @@ export function CockpitDashboard() {
             </div>
           </div>
 
-          {/* Needs Attention */}
+          {/* Needs Attention — with warning pulse */}
           {projects.filter(p => p.isArchived || (p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() > 180 * 24 * 60 * 60 * 1000))).length > 0 && (
-            <div className="border-t border-border/10 px-3 py-2 bg-orange-500/5">
+            <div className="border-t border-border/10 px-3 py-2 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, rgba(249,115,22,0.04) 0%, rgba(249,115,22,0.02) 50%, rgba(234,179,8,0.03) 100%)' }}>
+              {/* Subtle pulse border */}
+              <div className="absolute inset-0 border border-orange-500/10 rounded-none pointer-events-none needs-attention-pulse" />
               <h3 className="text-[11px] font-medium text-orange-400/60 uppercase tracking-wider mb-1.5 flex items-center gap-1">
                 <AlertTriangle className="w-2.5 h-2.5" /> Needs Attention
                 <span className="ml-auto text-[9px] normal-case text-orange-400/40">
@@ -1153,32 +1237,32 @@ export function CockpitDashboard() {
             </div>
           )}
 
-          {/* Top Starred — with trophy icons */}
+          {/* Most Starred — with horizontal bar charts */}
           <div className="border-t border-border/10 px-3 py-2">
-            <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1.5">Most Starred</h3>
+            <h3 className="text-[11px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+              <Trophy className="w-2.5 h-2.5" /> Most Starred
+            </h3>
             {[...projects].sort((a, b) => b.stargazersCount - a.stargazersCount).slice(0, 4).map((p, idx) => {
-              const starTrend = p.stargazersCount > 0 ? Math.min(p.stargazersCount / 5, 20) : 0;
-              const trophyIcon = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '';
+              const maxStars = Math.max(...projects.map(pr => pr.stargazersCount), 1);
+              const barWidth = Math.max((p.stargazersCount / maxStars) * 100, 4);
+              const barColor = idx === 0 ? 'rgba(245,158,11,0.5)' : idx === 1 ? 'rgba(245,158,11,0.35)' : idx === 2 ? 'rgba(245,158,11,0.25)' : 'rgba(245,158,11,0.15)';
               return (
                 <button
                   key={p.id}
                   onClick={() => setSelectedProject(p)}
-                  className="w-full flex items-center gap-2 py-1 text-left hover:bg-card/30 rounded px-1 transition-colors"
+                  className="w-full text-left py-1 px-1 rounded hover:bg-card/30 transition-colors group/star"
                 >
-                  {trophyIcon ? (
-                    <span className="text-[10px] leading-none w-3 shrink-0">{trophyIcon}</span>
-                  ) : (
-                    <Star className="w-3 h-3 text-amber-400/60" />
-                  )}
-                  <span className="text-[10px] text-foreground/60 truncate flex-1">{p.name}</span>
-                  <svg width="24" height="12" className="shrink-0">
-                    <rect x="0" y={8 - starTrend * 0.3} width="3" height={starTrend * 0.3 + 2} rx="1" fill="rgba(245,158,11,0.2)" />
-                    <rect x="5" y={6 - starTrend * 0.4} width="3" height={starTrend * 0.4 + 2} rx="1" fill="rgba(245,158,11,0.3)" />
-                    <rect x="10" y={4 - starTrend * 0.5} width="3" height={starTrend * 0.5 + 2} rx="1" fill="rgba(245,158,11,0.4)" />
-                    <rect x="15" y={2 - starTrend * 0.6} width="3" height={starTrend * 0.6 + 2} rx="1" fill="rgba(245,158,11,0.5)" />
-                    <rect x="20" y={0} width="3" height={starTrend * 0.7 + 2} rx="1" fill="rgba(245,158,11,0.6)" />
-                  </svg>
-                  <span className="text-[10px] text-amber-400/50 font-medium">{p.stargazersCount}</span>
+                  <div className="flex items-center gap-1.5">
+                    <Star className={`w-2.5 h-2.5 shrink-0 ${idx === 0 ? 'text-amber-400' : 'text-amber-400/40'}`} />
+                    <span className="text-[10px] text-foreground/60 truncate flex-1 group-hover/star:text-foreground/80 transition-colors">{p.name}</span>
+                    <span className="text-[10px] text-amber-400/50 font-medium tabular-nums shrink-0">{p.stargazersCount}</span>
+                  </div>
+                  <div className="mt-0.5 ml-4 h-1.5 rounded-full bg-card/30 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${barWidth}%`, backgroundColor: barColor }}
+                    />
+                  </div>
                 </button>
               );
             })}
@@ -1262,6 +1346,15 @@ export function CockpitDashboard() {
       {/* Export dialog */}
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} />
 
+      {/* AI Recommendations */}
+      <AIRecommendations
+        open={aiRecommendationsOpen}
+        onClose={() => setAiRecommendationsOpen(false)}
+        projects={projects}
+        username={username}
+        onProjectClick={(p) => setSelectedProject(p)}
+      />
+
       {/* Command Palette */}
       <CommandPalette
         open={commandPaletteOpen}
@@ -1276,6 +1369,7 @@ export function CockpitDashboard() {
         onCompare={() => setCompareOpen(true)}
         onExport={() => setExportOpen(true)}
         onOrgRepos={handleFetchOrgRepos}
+        onAIRecommendations={() => setAiRecommendationsOpen(true)}
         onToggleTag={toggleTag}
         tags={tagData}
         activeTags={activeTags}
@@ -1311,6 +1405,7 @@ export function CockpitDashboard() {
                 <ShortcutItem keys="⌘5" description="Dependency network" />
                 <ShortcutItem keys="⌘6" description="Tech Radar" />
                 <ShortcutItem keys="⌘7" description="Bookmarks" />
+                <ShortcutItem keys="⌘8" description="Relationship Map" />
                 <ShortcutItem keys="⌘K" description="Command palette" />
                 <ShortcutItem keys="?" description="Show this help" />
                 <ShortcutItem keys="Esc" description="Close dialogs" />
