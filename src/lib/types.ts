@@ -55,7 +55,7 @@ export interface AnalysisJob {
   updatedAt: string;
 }
 
-export type ViewMode = 'graph' | 'grid' | 'timeline';
+export type ViewMode = 'graph' | 'grid' | 'timeline' | 'stats';
 
 export const CATEGORY_COLORS: Record<string, string> = {
   tool: '#10b981',

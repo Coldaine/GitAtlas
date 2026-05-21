@@ -5,10 +5,12 @@ import { CATEGORY_COLORS, LANGUAGE_COLORS } from '@/lib/types';
 import { ProjectGraph } from '@/components/project-graph';
 import { ProjectGrid } from '@/components/project-grid';
 import { TimelineView } from '@/components/timeline-view';
+import { StatsOverview } from '@/components/stats-overview';
 import { DetailPanel } from '@/components/detail-panel';
 import { SmartSearchDialog } from '@/components/smart-search-dialog';
 import { CompareDialog } from '@/components/compare-dialog';
 import { ActivityHeatmap } from '@/components/activity-heatmap';
+import { OnboardingTour } from '@/components/onboarding-tour';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,13 +20,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Sparkles, Star, GitFork, Activity, Zap, Search,
   Network, LayoutGrid, Flame, Clock, Loader2,
-  FolderOpen, Code2, ChevronRight, X,
+  FolderOpen, ChevronRight, X,
   Microscope, Calendar, FileText, Keyboard,
   ShieldCheck, AlertTriangle, Archive, GitCompare,
-  Building2,
+  Building2, BarChart3, RefreshCw, Microscope as DeepAnalyzeIcon,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useState, useMemo, useCallback, useEffect } from 'react';
+
+type ActivityFilter = 'all' | 'active' | 'stale' | 'analyzed';
 
 export function CockpitDashboard() {
   const {
@@ -43,6 +47,8 @@ export function CockpitDashboard() {
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
   const [isLoadingOrgRepos, setIsLoadingOrgRepos] = useState(false);
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>('all');
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Check if org repos are already loaded
   const hasOrgRepos = useMemo(() => projects.some(p => p.ownerType === 'Organization'), [projects]);
@@ -50,7 +56,6 @@ export function CockpitDashboard() {
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger shortcuts when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       if (e.key === '/' && !e.metaKey && !e.ctrlKey) {
@@ -73,6 +78,10 @@ export function CockpitDashboard() {
         e.preventDefault();
         setViewMode('timeline');
       }
+      if (e.key === '4' && e.metaKey) {
+        e.preventDefault();
+        setViewMode('stats');
+      }
       if (e.key === '?' && e.shiftKey) {
         e.preventDefault();
         setShowKeyboardHelp(prev => !prev);
@@ -91,6 +100,7 @@ export function CockpitDashboard() {
     [projects]
   );
   const deepAnalyzedCount = useMemo(() => projects.filter(p => p.deepAnalyzedAt).length, [projects]);
+  const hasUnanalyzedRepos = useMemo(() => projects.some(p => !p.deepAnalyzedAt), [projects]);
 
   // Language chart data
   const langData = useMemo(() => {
@@ -143,14 +153,23 @@ export function CockpitDashboard() {
       .map(([month, count]) => ({ month, count }));
   }, [projects]);
 
-  // Recently pushed projects (for activity feed)
-  const recentProjects = useMemo(() =>
-    [...projects]
+  // Recently pushed projects (for activity feed) — with filter
+  const recentProjects = useMemo(() => {
+    const sorted = [...projects]
       .filter(p => p.pushedAt)
-      .sort((a, b) => new Date(b.pushedAt!).getTime() - new Date(a.pushedAt!).getTime())
-      .slice(0, 8),
-    [projects]
-  );
+      .sort((a, b) => new Date(b.pushedAt!).getTime() - new Date(a.pushedAt!).getTime());
+
+    switch (activityFilter) {
+      case 'active':
+        return sorted.filter(p => (Date.now() - new Date(p.pushedAt!).getTime() < 30 * 24 * 60 * 60 * 1000)).slice(0, 10);
+      case 'stale':
+        return sorted.filter(p => (Date.now() - new Date(p.pushedAt!).getTime() > 180 * 24 * 60 * 60 * 1000) || p.isArchived).slice(0, 10);
+      case 'analyzed':
+        return sorted.filter(p => p.deepAnalyzedAt).slice(0, 10);
+      default:
+        return sorted.slice(0, 8);
+    }
+  }, [projects, activityFilter]);
 
   // Filtered projects — include deep analysis data in search
   const filteredProjects = useMemo(() => {
@@ -175,6 +194,22 @@ export function CockpitDashboard() {
       return true;
     });
   }, [projects, searchQuery, activeTags]);
+
+  // Refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const projectsRes = await fetch(`/api/github/projects?username=${username}`);
+      if (projectsRes.ok) {
+        const projectsData = await projectsRes.json();
+        setProjects(projectsData.projects || []);
+      }
+    } catch (err) {
+      console.error('Refresh error:', err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [username, setProjects]);
 
   // Batch Rewrite READMEs handler
   const handleBatchRewriteReadmes = useCallback(async () => {
@@ -201,11 +236,9 @@ export function CockpitDashboard() {
           setReadmeProgress(`Generated ${completed}/${deepAnalyzedProjects.length} READMEs`);
         }
       } catch { /* skip failed */ }
-      // Small delay to avoid overwhelming the API
       await new Promise(r => setTimeout(r, 500));
     }
 
-    // Refresh projects
     const projectsRes = await fetch(`/api/github/projects?username=${username}`);
     if (projectsRes.ok) {
       const projectsData = await projectsRes.json();
@@ -223,7 +256,6 @@ export function CockpitDashboard() {
     setDeepAnalyzing(true);
     setDeepAnalyzeCount(0);
 
-    // Find repos that haven't been deep-analyzed yet
     const unanalyzed = projects.filter(p => !p.deepAnalyzedAt);
     const total = unanalyzed.length;
 
@@ -257,7 +289,6 @@ export function CockpitDashboard() {
         setDeepAnalyzeProgress(`Analyzing ${repoName}... (${completed}/${total})`);
         setDeepAnalyzeCount(completed);
 
-        // Refresh projects after each individual repo is done
         const projectsRes = await fetch(`/api/github/projects?username=${username}`);
         if (projectsRes.ok) {
           const projectsData = await projectsRes.json();
@@ -288,7 +319,6 @@ export function CockpitDashboard() {
     try {
       const res = await fetch('/api/github/org-repos?org=ProjectBroadside');
       if (res.ok) {
-        // Refresh all projects to include org repos
         const projectsRes = await fetch(`/api/github/projects?username=${username}`);
         if (projectsRes.ok) {
           const projectsData = await projectsRes.json();
@@ -303,7 +333,10 @@ export function CockpitDashboard() {
   }, [isLoadingOrgRepos, hasOrgRepos, username, setProjects]);
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden">
+    <div className="flex-1 flex flex-col h-full overflow-hidden page-load-animation">
+      {/* Onboarding Tour */}
+      <OnboardingTour />
+
       {/* Top bar — minimal, dense with gradient */}
       <header className="flex items-center gap-3 px-4 py-2 bg-gradient-to-r from-card/50 via-card/30 to-card/50 backdrop-blur-sm shrink-0 relative">
         <div className="flex items-center gap-2">
@@ -372,15 +405,18 @@ export function CockpitDashboard() {
             )}
           </div>
 
-          {/* Smart search */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setSmartSearchOpen(true)}
-            className="h-7 gap-1 text-xs border-amber-500/30 text-amber-400 hover:bg-amber-500/10 px-2"
-          >
-            <Zap className="w-3 h-3" />Do I have...?
-          </Button>
+          {/* Smart search — tour target */}
+          <div id="tour-smart-search">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSmartSearchOpen(true)}
+              className="h-7 gap-1 text-xs border-amber-500/30 text-amber-400 hover:bg-amber-500/10 px-2"
+              title="Smart Search: Ask if you already have a tool for X"
+            >
+              <Zap className="w-3 h-3" />Do I have...?
+            </Button>
+          </div>
 
           {/* Compare */}
           <Button
@@ -388,6 +424,7 @@ export function CockpitDashboard() {
             size="sm"
             onClick={() => setCompareOpen(true)}
             className="h-7 gap-1 text-xs border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10 px-2"
+            title="Compare two projects side-by-side"
           >
             <GitCompare className="w-3 h-3" />Compare
           </Button>
@@ -400,6 +437,7 @@ export function CockpitDashboard() {
               onClick={handleFetchOrgRepos}
               disabled={isLoadingOrgRepos}
               className="h-7 gap-1 text-xs border-orange-500/30 text-orange-400 hover:bg-orange-500/10 px-2"
+              title="Load ProjectBroadside organization repos"
             >
               {isLoadingOrgRepos ? (
                 <><Loader2 className="w-3 h-3 animate-spin" /> Loading...</>
@@ -409,20 +447,23 @@ export function CockpitDashboard() {
             </Button>
           )}
 
-          {/* Deep Analyze All */}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleDeepAnalyzeAll}
-            disabled={isDeepAnalyzing}
-            className="h-7 gap-1 text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 px-2"
-          >
-            {isDeepAnalyzing ? (
-              <><Loader2 className="w-3 h-3 animate-spin" /> Analyzing...</>
-            ) : (
-              <><Microscope className="w-3 h-3" /> Deep Analyze</>
-            )}
-          </Button>
+          {/* Deep Analyze All — with shimmer when unanalyzed repos exist */}
+          <div id="tour-deep-analyze">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleDeepAnalyzeAll}
+              disabled={isDeepAnalyzing}
+              className={`h-7 gap-1 text-xs border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 px-2 ${hasUnanalyzedRepos && !isDeepAnalyzing ? 'shimmer-button' : ''}`}
+              title="Deep analyze all repos with AI"
+            >
+              {isDeepAnalyzing ? (
+                <><Loader2 className="w-3 h-3 animate-spin" /> Analyzing...</>
+              ) : (
+                <><Microscope className="w-3 h-3" /> Deep Analyze</>
+              )}
+            </Button>
+          </div>
 
           {/* Rewrite All READMEs */}
           <Button
@@ -431,6 +472,7 @@ export function CockpitDashboard() {
             onClick={handleBatchRewriteReadmes}
             disabled={isRewritingReadmes || isDeepAnalyzing}
             className="h-7 gap-1 text-xs border-violet-500/30 text-violet-400 hover:bg-violet-500/10 px-2"
+            title="Generate AI READMEs for all deep-analyzed repos"
           >
             {isRewritingReadmes ? (
               <><Loader2 className="w-3 h-3 animate-spin" /> {readmeProgress}</>
@@ -443,7 +485,7 @@ export function CockpitDashboard() {
           <button
             onClick={() => setShowKeyboardHelp(prev => !prev)}
             className="h-7 w-7 flex items-center justify-center text-muted-foreground/40 hover:text-foreground/60 rounded transition-colors"
-            title="Keyboard shortcuts"
+            title="Keyboard shortcuts (? )"
           >
             <Keyboard className="w-3.5 h-3.5" />
           </button>
@@ -453,23 +495,30 @@ export function CockpitDashboard() {
             <button
               onClick={() => setViewMode('graph')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'graph' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Graph View"
+              title="Graph View (⌘1)"
             >
               <Network className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('grid')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'grid' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Grid View"
+              title="Grid View (⌘2)"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('timeline')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'timeline' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Timeline View"
+              title="Timeline View (⌘3)"
             >
               <Calendar className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={() => setViewMode('stats')}
+              className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'stats' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Stats Overview (⌘4)"
+            >
+              <BarChart3 className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -478,6 +527,7 @@ export function CockpitDashboard() {
             size="sm"
             onClick={() => setShowDetailGrid(!showDetailGrid)}
             className={`h-7 gap-1 text-xs ${showDetailGrid ? 'text-emerald-400' : 'text-muted-foreground'}`}
+            title="Toggle card strip at bottom"
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             {showDetailGrid ? 'Hide' : 'Show'} Cards
@@ -653,7 +703,7 @@ export function CockpitDashboard() {
         </div>
 
         {/* CENTER — Main visualization */}
-        <div className="flex-1 overflow-hidden relative">
+        <div className="flex-1 overflow-hidden relative" id="tour-graph-area">
           <AnimatePresence mode="wait">
             {isLoading ? (
               <motion.div
@@ -694,6 +744,17 @@ export function CockpitDashboard() {
               >
                 <TimelineView projects={filteredProjects} />
               </motion.div>
+            ) : viewMode === 'stats' ? (
+              <motion.div
+                key="stats"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className="h-full"
+              >
+                <StatsOverview projects={filteredProjects} />
+              </motion.div>
             ) : (
               <motion.div
                 key="grid"
@@ -708,27 +769,57 @@ export function CockpitDashboard() {
             )}
           </AnimatePresence>
 
-          {/* Floating stats pill at bottom of graph — glass morphism */}
+          {/* Floating stats pill — glass morphism, more informative */}
           {!isLoading && (
             <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-1.5 rounded-full bg-card/60 backdrop-blur-xl border border-border/20 text-[10px] text-muted-foreground/60 shadow-lg shadow-black/10">
               <span>{filteredProjects.length} of {projects.length} projects</span>
               {activeTags.length > 0 && <span>Filtered by {activeTags.length} tags</span>}
               {searchQuery && <span>Matching &quot;{searchQuery}&quot;</span>}
-              {deepAnalyzedCount > 0 && <span>{deepAnalyzedCount} deep analyzed</span>}
+              {deepAnalyzedCount > 0 && (
+                <span className="flex items-center gap-1 text-emerald-400/60">
+                  <ShieldCheck className="w-3 h-3" /> {deepAnalyzedCount} deep analyzed
+                </span>
+              )}
             </div>
           )}
         </div>
 
         {/* RIGHT PANEL — Activity feed + Insights */}
         <div className="w-60 shrink-0 border-l border-border/15 bg-card/10 flex flex-col overflow-hidden">
-          <div className="px-3 py-2 border-b border-border/10">
+          <div className="px-3 py-2 border-b border-border/10 flex items-center justify-between">
             <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider">Recent Activity</h3>
+            <button
+              onClick={handleRefresh}
+              className="text-muted-foreground/30 hover:text-foreground/60 transition-colors"
+              title="Refresh project data"
+            >
+              <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
+            </button>
           </div>
+
+          {/* Filter tabs */}
+          <div className="flex gap-0.5 px-2 py-1.5 border-b border-border/5">
+            {(['all', 'active', 'stale', 'analyzed'] as const).map(f => (
+              <button
+                key={f}
+                onClick={() => setActivityFilter(f)}
+                className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${
+                  activityFilter === f
+                    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/20'
+                    : 'text-muted-foreground/30 border border-transparent hover:text-muted-foreground/60'
+                }`}
+              >
+                {f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
+          </div>
+
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-1">
               {recentProjects.map((p, i) => {
                 const catColor = p.category ? CATEGORY_COLORS[p.category] : '#64748b';
                 const isActive = p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() < 7 * 24 * 60 * 60 * 1000);
+                const isDeepAnalyzed = !!p.deepAnalyzedAt;
 
                 return (
                   <motion.button
@@ -737,6 +828,7 @@ export function CockpitDashboard() {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.03 }}
                     onClick={() => setSelectedProject(p)}
+                    id={i === 0 ? 'tour-detail-panel' : undefined}
                     className="w-full text-left p-2 rounded-md hover:bg-card/40 transition-all group border-l-2 border-transparent hover:border-emerald-500/40"
                   >
                     <div className="flex items-start gap-2">
@@ -745,13 +837,16 @@ export function CockpitDashboard() {
                         {isActive && (
                           <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                         )}
+                        {isDeepAnalyzed && (
+                          <span className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-emerald-400/60 deep-analyze-pulse" />
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1">
                           <p className="text-[11px] font-medium text-foreground/80 truncate group-hover:text-foreground transition-colors">
                             {p.name}
                           </p>
-                          {p.deepAnalyzedAt && (
+                          {isDeepAnalyzed && (
                             <ShieldCheck className="w-2.5 h-2.5 text-emerald-400/50 shrink-0" />
                           )}
                         </div>
@@ -765,7 +860,7 @@ export function CockpitDashboard() {
                           {p.pushedAt && (
                             <span className="flex items-center gap-0.5">
                               <Clock className="w-2.5 h-2.5" />
-                              {formatDistanceToNow(new Date(p.pushedAt), { addSuffix: true })}
+                              {formatRelativeTime(new Date(p.pushedAt))}
                             </span>
                           )}
                         </div>
@@ -958,6 +1053,7 @@ export function CockpitDashboard() {
                 <ShortcutItem keys="⌘1" description="Graph view" />
                 <ShortcutItem keys="⌘2" description="Grid view" />
                 <ShortcutItem keys="⌘3" description="Timeline view" />
+                <ShortcutItem keys="⌘4" description="Stats overview" />
                 <ShortcutItem keys="?" description="Show this help" />
                 <ShortcutItem keys="Esc" description="Close dialogs" />
               </div>
@@ -979,4 +1075,23 @@ function ShortcutItem({ keys, description }: { keys: string; description: string
       </kbd>
     </div>
   );
+}
+
+// More granular relative time formatting
+function formatRelativeTime(date: Date): string {
+  const now = Date.now();
+  const diff = now - date.getTime();
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  const months = Math.floor(days / 30);
+  const years = Math.floor(days / 365);
+
+  if (seconds < 60) return 'just now';
+  if (minutes < 60) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+  if (hours < 24) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+  if (days < 30) return `${days} day${days > 1 ? 's' : ''} ago`;
+  if (months < 12) return `${months} month${months > 1 ? 's' : ''} ago`;
+  return `${years} year${years > 1 ? 's' : ''} ago`;
 }

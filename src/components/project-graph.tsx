@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useAtlasStore } from '@/lib/store';
 import { Project, CATEGORY_COLORS, LANGUAGE_COLORS } from '@/lib/types';
 import { ProjectHoverCard } from '@/components/project-hover-card';
+import { RotateCcw } from 'lucide-react';
 
 interface NodePosition {
   id: string;
@@ -51,7 +52,6 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const isPanningRef = useRef(false);
   const panStartRef = useRef({ x: 0, y: 0 });
-  const panOffsetRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
 
@@ -97,6 +97,61 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     }
     return newEdges;
   }, [projects]);
+
+  // Category cluster labels — compute centroid for each category
+  const categoryLabels = useMemo(() => {
+    const catNodes = new Map<string, { xSum: number; ySum: number; count: number; color: string }>();
+    for (const node of nodes) {
+      const cat = node.project.category;
+      if (!cat) continue;
+      const existing = catNodes.get(cat);
+      if (existing) {
+        existing.xSum += node.x;
+        existing.ySum += node.y;
+        existing.count += 1;
+      } else {
+        catNodes.set(cat, {
+          xSum: node.x,
+          ySum: node.y,
+          count: 1,
+          color: CATEGORY_COLORS[cat] || '#64748b',
+        });
+      }
+    }
+    return [...catNodes.entries()].map(([cat, data]) => ({
+      label: cat.charAt(0).toUpperCase() + cat.slice(1),
+      x: data.xSum / data.count,
+      y: data.ySum / data.count - 40,
+      color: data.color,
+      count: data.count,
+    }));
+  }, [nodes]);
+
+  // Category counts for legend
+  const categoryCounts = useMemo(() => {
+    const map = new Map<string, number>();
+    projects.forEach(p => { if (p.category) map.set(p.category, (map.get(p.category) || 0) + 1); });
+    return [...map.entries()].map(([name, count]) => ({
+      name,
+      count,
+      color: CATEGORY_COLORS[name] || '#64748b',
+    })).sort((a, b) => b.count - a.count);
+  }, [projects]);
+
+  // Gradient definitions for edges
+  const edgeGradients = useMemo(() => {
+    const gradients: { id: string; fromColor: string; toColor: string }[] = [];
+    for (const edge of computedEdges) {
+      if (edge.type === 'tag') {
+        const sourceP = projects.find(p => p.id === edge.source);
+        const targetP = projects.find(p => p.id === edge.target);
+        const fromColor = sourceP?.category ? CATEGORY_COLORS[sourceP.category] : '#64748b';
+        const toColor = targetP?.category ? CATEGORY_COLORS[targetP.category] : '#64748b';
+        gradients.push({ id: `grad-${edge.source}-${edge.target}`, fromColor, toColor });
+      }
+    }
+    return gradients;
+  }, [computedEdges, projects]);
 
   // Resize observer
   useEffect(() => {
@@ -232,7 +287,6 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
 
   // Pan with background drag
   const handleBgMouseDown = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
-    // Only pan if clicking the background (not a node)
     if ((e.target as SVGElement).closest('.graph-node')) return;
     isPanningRef.current = true;
     panStartRef.current = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y };
@@ -244,7 +298,6 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
       if (!svg) return;
       const rect = svg.getBoundingClientRect();
 
-      // Transform mouse coordinates to SVG space
       const svgX = (e.clientX - rect.left - panRef.current.x) / zoomRef.current;
       const svgY = (e.clientY - rect.top - panRef.current.y) / zoomRef.current;
       setMousePos({ x: svgX, y: svgY });
@@ -321,6 +374,14 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     return map[cat] || '●';
   }, []);
 
+  // Reset view handler
+  const handleResetView = useCallback(() => {
+    zoomRef.current = 1;
+    panRef.current = { x: 0, y: 0 };
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
   // Minimap dimensions
   const minimapWidth = 120;
   const minimapHeight = 80;
@@ -366,6 +427,24 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
           <filter id="shadow">
             <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="rgba(0,0,0,0.3)" />
           </filter>
+          {/* Edge gradient definitions */}
+          {edgeGradients.map(g => (
+            <linearGradient key={g.id} id={g.id} gradientUnits="userSpaceOnUse">
+              <stop offset="0%" stopColor={g.fromColor} stopOpacity="0.3" />
+              <stop offset="100%" stopColor={g.toColor} stopOpacity="0.3" />
+            </linearGradient>
+          ))}
+          {/* Deep analysis emerald particle animation */}
+          <style>{`
+            @keyframes emeraldPulse {
+              0% { opacity: 0.15; r: inherit; }
+              50% { opacity: 0.35; }
+              100% { opacity: 0.15; }
+            }
+            .deep-glow {
+              animation: emeraldPulse 2s ease-in-out infinite;
+            }
+          `}</style>
         </defs>
 
         {/* Background grid pattern */}
@@ -376,6 +455,24 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
 
         {/* Main graph group with zoom/pan transform */}
         <g transform={`translate(${pan.x}, ${pan.y}) scale(${zoom})`}>
+          {/* Category cluster labels — background labels at centroid */}
+          {categoryLabels.map((cl, i) => (
+            <text
+              key={`cluster-${i}`}
+              x={cl.x}
+              y={cl.y}
+              textAnchor="middle"
+              fill={cl.color}
+              fontSize={11}
+              fontWeight="500"
+              opacity={0.15}
+              className="pointer-events-none select-none"
+              style={{ fontFamily: 'var(--font-geist-sans)' }}
+            >
+              {cl.label} ({cl.count})
+            </text>
+          ))}
+
           {/* Edges */}
           {edges.map((edge, i) => {
             const source = nodes.find((n) => n.id === edge.source);
@@ -390,6 +487,10 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
             const color = isHighlighted ? highlightColor : baseColor;
             const opacity = isHighlighted ? 0.6 : isDependency ? 0.08 : 0.06;
 
+            // Use gradient for tag edges when highlighted
+            const gradientId = `grad-${edge.source}-${edge.target}`;
+            const stroke = isHighlighted && !isDependency ? `url(#${gradientId})` : color;
+
             return (
               <line
                 key={`edge-${i}`}
@@ -397,7 +498,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                 y1={source.y}
                 x2={target.x}
                 y2={target.y}
-                stroke={color}
+                stroke={stroke}
                 strokeWidth={isHighlighted ? Math.min(edge.weight * 1, 3) : isDependency ? 1 : 0.5}
                 opacity={opacity}
                 strokeDasharray={isDependency && !isHighlighted ? '4 4' : undefined}
@@ -412,6 +513,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
             const isConnected = connectedNodes.has(node.id);
             const dimmed = isNodeDimmed(node);
             const opacity = dimmed ? 0.12 : isHovered ? 1 : isConnected && hoveredNode ? 0.85 : 0.65;
+            const isDeepAnalyzed = !!node.project.deepAnalyzedAt;
 
             return (
               <g
@@ -449,8 +551,21 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                   </>
                 )}
 
-                {/* Deep analysis ring — emerald ring for deep-analyzed repos */}
-                {node.project.deepAnalyzedAt && !isHovered && (
+                {/* Deep analysis ring — emerald ring with glow animation */}
+                {isDeepAnalyzed && !isHovered && (
+                  <circle
+                    cx={node.x}
+                    cy={node.y}
+                    r={node.radius + 5}
+                    fill="none"
+                    stroke="#10b981"
+                    strokeWidth={1.5}
+                    opacity={0.2}
+                    className="deep-glow"
+                    filter="url(#glow)"
+                  />
+                )}
+                {isDeepAnalyzed && !isHovered && (
                   <circle
                     cx={node.x}
                     cy={node.y}
@@ -477,10 +592,10 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                   cy={node.y}
                   r={isHovered ? node.radius + 2 : node.radius}
                   fill={node.color}
-                  opacity={isHovered ? 0.95 : node.project.deepAnalyzedAt ? 0.8 : 0.65}
-                  filter={isHovered ? 'url(#glow)' : node.project.deepAnalyzedAt ? 'url(#glow)' : undefined}
-                  stroke={isHovered ? 'rgba(255,255,255,0.3)' : node.project.deepAnalyzedAt ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.08)'}
-                  strokeWidth={isHovered ? 2 : node.project.deepAnalyzedAt ? 1.5 : 1}
+                  opacity={isHovered ? 0.95 : isDeepAnalyzed ? 0.8 : 0.65}
+                  filter={isHovered ? 'url(#glow)' : isDeepAnalyzed ? 'url(#glow)' : undefined}
+                  stroke={isHovered ? 'rgba(255,255,255,0.3)' : isDeepAnalyzed ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.08)'}
+                  strokeWidth={isHovered ? 2 : isDeepAnalyzed ? 1.5 : 1}
                 />
 
                 {/* Category icon in center for larger nodes */}
@@ -550,7 +665,6 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
             const offsetX = dimensions.width - minimapWidth - minimapPadding + (minimapWidth - dimensions.width * scale) / 2;
             const offsetY = minimapPadding + (minimapHeight - dimensions.height * scale) / 2;
 
-            // Viewport rect
             const vpX = offsetX + (-pan.x / zoom) * scale;
             const vpY = offsetY + (-pan.y / zoom) * scale;
             const vpW = (dimensions.width / zoom) * scale;
@@ -663,8 +777,38 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
           >
             Verified
           </text>
+          {/* Category counts */}
+          {categoryCounts.slice(0, 3).map((cat, i) => (
+            <g key={cat.name}>
+              <circle
+                cx={dimensions.width - minimapWidth - minimapPadding + 3}
+                cy={minimapPadding + minimapHeight + 54 + i * 10}
+                r={2.5}
+                fill={cat.color}
+                opacity={0.5}
+              />
+              <text
+                x={dimensions.width - minimapWidth - minimapPadding + 19}
+                y={minimapPadding + minimapHeight + 57 + i * 10}
+                fill="rgba(148,163,184,0.3)"
+                fontSize={7}
+                className="pointer-events-none select-none"
+              >
+                {cat.name} ({cat.count})
+              </text>
+            </g>
+          ))}
         </g>
       </svg>
+
+      {/* Reset View button */}
+      <button
+        onClick={handleResetView}
+        className="absolute bottom-12 left-3 p-1.5 rounded-md bg-card/60 backdrop-blur-sm border border-border/20 text-muted-foreground/40 hover:text-foreground/60 hover:bg-card/80 transition-colors"
+        title="Reset View"
+      >
+        <RotateCcw className="w-3.5 h-3.5" />
+      </button>
 
       {/* Hover card */}
       {hoveredNode && (

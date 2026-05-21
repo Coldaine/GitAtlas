@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Skeleton } from '@/components/ui/skeleton';
+import { GitCommit } from 'lucide-react';
 
 interface ActivityDay {
   date: string;
@@ -27,12 +28,12 @@ const CELL_SIZE = 7;
 const CELL_GAP = 1;
 const CELL_STEP = CELL_SIZE + CELL_GAP;
 
-// Emerald color palette based on commit count
+// Emerald color palette based on commit count - more visible
 function getColor(count: number): string {
-  if (count === 0) return 'rgba(16, 185, 129, 0.06)';
-  if (count <= 2) return 'rgba(16, 185, 129, 0.25)';
-  if (count <= 5) return 'rgba(16, 185, 129, 0.45)';
-  if (count <= 9) return 'rgba(16, 185, 129, 0.7)';
+  if (count === 0) return 'rgba(16, 185, 129, 0.12)';
+  if (count <= 2) return 'rgba(16, 185, 129, 0.35)';
+  if (count <= 5) return 'rgba(16, 185, 129, 0.55)';
+  if (count <= 9) return 'rgba(16, 185, 129, 0.75)';
   return 'rgba(16, 185, 129, 0.95)';
 }
 
@@ -166,14 +167,15 @@ export function ActivityHeatmap({ username }: { username: string }) {
 
   return (
     <div className="space-y-1.5">
-      {/* Summary */}
-      <div className="text-[10px] text-muted-foreground/50">
+      {/* Summary with commit icon */}
+      <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50">
+        <GitCommit className="w-3 h-3 text-emerald-400/70" />
         <span className="text-emerald-400/70 font-medium">{data.totalCommits}</span> commits in the last year ·{' '}
         <span className="text-emerald-400/70 font-medium">{data.activeDays}</span> active days
       </div>
 
-      {/* Heatmap SVG */}
-      <div className="overflow-x-auto">
+      {/* Heatmap SVG with border */}
+      <div className="overflow-x-auto rounded-md border border-emerald-500/10 p-1">
         <svg width={svgWidth} height={svgHeight} className="block">
           {/* Month labels */}
           {grid.monthLabels.map((ml, i) => (

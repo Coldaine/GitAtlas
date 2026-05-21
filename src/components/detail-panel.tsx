@@ -41,10 +41,117 @@ import {
   ShieldCheck,
   Network,
   FolderTree,
+  Copy,
+  Check,
+  GitCommit,
+  Heart,
 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { formatDistanceToNow, format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useToast } from '@/hooks/use-toast';
+
+// Framework color mapping for tech stack boxes
+const FRAMEWORK_COLORS: Record<string, string> = {
+  'React': '#61dafb',
+  'Next.js': '#ffffff',
+  'Vue': '#42b883',
+  'Svelte': '#ff3e00',
+  'Angular': '#dd0031',
+  'Express': '#ffffff',
+  'FastAPI': '#009688',
+  'Flask': '#ffffff',
+  'Django': '#092e20',
+  'Tauri': '#ffc131',
+  'Electron': '#47848f',
+  'Click': '#ffffff',
+  'Typer': '#ffffff',
+  'Rich': '#ffffff',
+  'Pydantic': '#e92063',
+  'SQLAlchemy': '#d54634',
+  'LangChain': '#1c3c3c',
+  'OpenAI': '#412991',
+  'Anthropic': '#d4a574',
+  'Tokio': '#ffffff',
+  'Actix': '#ffffff',
+  'Axum': '#ffffff',
+  'MCP': '#10b981',
+  'TypeScript': '#3178c6',
+  'JavaScript': '#f1e05a',
+  'Python': '#3572A5',
+  'Rust': '#dea584',
+  'Tailwind': '#38bdf8',
+  'Prisma': '#5a67d8',
+};
+
+// Skill dot categories based on code signature patterns
+interface SkillProfile {
+  label: string;
+  score: number; // 0-5
+  color: string;
+}
+
+function computeSkillProfile(project: {
+  codeSignature?: { frameworks: string[]; patterns: string[]; architecture: string } | null;
+  language?: string | null;
+  category?: string | null;
+}): SkillProfile[] {
+  const frameworks = project.codeSignature?.frameworks || [];
+  const patterns = project.codeSignature?.patterns || [];
+  const lang = project.language || '';
+  const cat = project.category || '';
+
+  const isFrontend = frameworks.some(f => ['React', 'Next.js', 'Vue', 'Svelte', 'Angular', 'Tailwind'].includes(f)) || ['JavaScript', 'TypeScript'].includes(lang);
+  const isBackend = frameworks.some(f => ['Express', 'FastAPI', 'Flask', 'Django', 'Actix', 'Axum'].includes(f)) || ['Python', 'Go', 'Rust'].includes(lang);
+  const isCLI = patterns.includes('CLI') || frameworks.some(f => ['Click', 'Typer', 'Rich'].includes(f)) || cat === 'tool';
+  const isAI = patterns.includes('AI/LLM') || frameworks.some(f => ['LangChain', 'OpenAI', 'Anthropic', 'MCP'].includes(f));
+  const isDesktop = frameworks.some(f => ['Tauri', 'Electron'].includes(f)) || cat === 'application';
+  const isAPI = frameworks.some(f => ['FastAPI', 'Express', 'Actix', 'Axum', 'Django'].includes(f)) || patterns.includes('REST API');
+
+  return [
+    { label: 'Frontend', score: isFrontend ? (frameworks.filter(f => ['React', 'Next.js', 'Vue', 'Svelte', 'Angular'].includes(f)).length + 2) : 1, color: '#61dafb' },
+    { label: 'Backend', score: isBackend ? (frameworks.filter(f => ['Express', 'FastAPI', 'Flask', 'Django'].includes(f)).length + 2) : 0, color: '#3572A5' },
+    { label: 'CLI', score: isCLI ? 4 : 0, color: '#10b981' },
+    { label: 'AI/ML', score: isAI ? 4 : 0, color: '#8b5cf6' },
+    { label: 'Desktop', score: isDesktop ? 3 : 0, color: '#f59e0b' },
+    { label: 'API', score: isAPI ? 3 : 0, color: '#ec4899' },
+  ].map(s => ({ ...s, score: Math.min(5, s.score) }));
+}
+
+function computeHealthScore(project: {
+  pushedAt?: string | null;
+  openIssuesCount: number;
+  isArchived: boolean;
+  stargazersCount: number;
+}): { score: number; label: string; color: string } {
+  if (project.isArchived) return { score: 0, label: 'Archived', color: '#64748b' };
+
+  let score = 50;
+
+  // Recent activity bonus (0-30)
+  if (project.pushedAt) {
+    const daysSince = (Date.now() - new Date(project.pushedAt).getTime()) / (1000 * 60 * 60 * 24);
+    if (daysSince < 7) score += 30;
+    else if (daysSince < 30) score += 20;
+    else if (daysSince < 90) score += 10;
+    else if (daysSince > 365) score -= 20;
+  }
+
+  // Stars bonus (0-15)
+  if (project.stargazersCount > 10) score += 15;
+  else if (project.stargazersCount > 3) score += 10;
+  else if (project.stargazersCount > 0) score += 5;
+
+  // Issues penalty (0-5)
+  if (project.openIssuesCount > 20) score -= 5;
+  else if (project.openIssuesCount > 5) score -= 2;
+
+  score = Math.max(0, Math.min(100, score));
+
+  if (score >= 70) return { score, label: 'Healthy', color: '#10b981' };
+  if (score >= 40) return { score, label: 'Moderate', color: '#f59e0b' };
+  return { score, label: 'Stale', color: '#ef4444' };
+}
 
 export function DetailPanel() {
   const { selectedProject, setSelectedProject, detailOpen, setDetailOpen, projects, updateProject, isDeepAnalyzing, deepAnalyzeProgress, setDeepAnalyzing, setDeepAnalyzeProgress } = useAtlasStore();
@@ -56,10 +163,25 @@ export function DetailPanel() {
   const [isLoadingSimilar, setIsLoadingSimilar] = useState(false);
   const [expandedDirs, setExpandedDirs] = useState<Set<string>>(new Set(['']));
   const [depFilter, setDepFilter] = useState<'all' | 'runtime' | 'dev'>('all');
+  const [copied, setCopied] = useState(false);
+
+  const { toast } = useToast();
 
   const project = selectedProject;
   const catColor = project?.category ? CATEGORY_COLORS[project.category] : '#64748b';
   const langColor = project?.language ? LANGUAGE_COLORS[project.language] : '#8b8b8b';
+
+  // Health score
+  const health = useMemo(() => {
+    if (!project) return { score: 0, label: '', color: '#64748b' };
+    return computeHealthScore(project);
+  }, [project]);
+
+  // Skill profile
+  const skillProfile = useMemo(() => {
+    if (!project) return [];
+    return computeSkillProfile(project);
+  }, [project]);
 
   // Build file tree structure from flat list
   const fileTreeStructure = useMemo(() => {
@@ -85,6 +207,27 @@ export function DetailPanel() {
     }
     return shareMap;
   }, [project?.dependencies, project?.id, projects]);
+
+  // Copy summary handler
+  const handleCopySummary = useCallback(async () => {
+    if (!project?.deepSummary) return;
+    try {
+      await navigator.clipboard.writeText(project.deepSummary);
+      setCopied(true);
+      toast({
+        title: 'Summary copied!',
+        description: 'Deep analysis summary copied to clipboard.',
+        duration: 2000,
+      });
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast({
+        title: 'Copy failed',
+        description: 'Could not copy to clipboard.',
+        duration: 2000,
+      });
+    }
+  }, [project?.deepSummary, toast]);
 
   // Deep analyze handler
   const handleDeepAnalyze = useCallback(async () => {
@@ -213,7 +356,15 @@ export function DetailPanel() {
       if (!open) setSelectedProject(null);
     }}>
       <SheetContent className="w-[560px] sm:max-w-[560px] bg-card/95 backdrop-blur-md border-border/30 p-0">
-        <SheetHeader className="px-6 pt-6 pb-4 border-b border-border/20">
+        {/* Gradient header bar */}
+        <div
+          className="h-1.5 w-full"
+          style={{
+            background: `linear-gradient(90deg, ${catColor}40, ${catColor}80, ${catColor}40)`,
+          }}
+        />
+
+        <SheetHeader className="px-6 pt-4 pb-4 border-b border-border/20">
           <div className="flex items-start gap-3">
             <div
               className="w-10 h-10 rounded-xl mt-0.5 shrink-0 flex items-center justify-center text-lg"
@@ -227,9 +378,23 @@ export function DetailPanel() {
                project.category === 'config' ? '🔧' : '●'}
             </div>
             <div className="flex-1 min-w-0">
-              <SheetTitle className="text-xl font-bold truncate">
-                {project.name}
-              </SheetTitle>
+              <div className="flex items-center gap-2">
+                <SheetTitle className="text-xl font-bold truncate">
+                  {project.name}
+                </SheetTitle>
+                {/* Health Score badge */}
+                <div className="flex items-center gap-1.5 shrink-0" title={`Health: ${health.label} (${health.score}/100)`}>
+                  <div className="relative w-5 h-5">
+                    <svg viewBox="0 0 20 20" className="w-5 h-5 -rotate-90">
+                      <circle cx="10" cy="10" r="8" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2.5" />
+                      <circle cx="10" cy="10" r="8" fill="none" stroke={health.color} strokeWidth="2.5" strokeDasharray={`${(health.score / 100) * 50.26} 50.26`} strokeLinecap="round" opacity="0.8" />
+                    </svg>
+                    <span className="absolute inset-0 flex items-center justify-center text-[6px] font-bold" style={{ color: health.color }}>
+                      {health.score}
+                    </span>
+                  </div>
+                </div>
+              </div>
               <p className="text-xs text-muted-foreground/60 truncate mt-0.5">
                 {project.fullName}
               </p>
@@ -246,18 +411,88 @@ export function DetailPanel() {
           </div>
         </SheetHeader>
 
-        <ScrollArea className="flex-1 h-[calc(100vh-120px)]">
+        <ScrollArea className="flex-1 h-[calc(100vh-130px)]">
           <div className="px-6 py-5 space-y-5">
-            {/* Activity indicator */}
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-background/30 border border-border/10">
-              <ActivityIcon className="w-4 h-4" style={{ color: activity.color }} />
+            {/* Activity indicator - more visually prominent */}
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-background/30 border border-border/10">
+              <div className="relative">
+                <ActivityIcon className="w-4 h-4" style={{ color: activity.color }} />
+                {activity.level === 'hot' && (
+                  <span className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full animate-ping" style={{ backgroundColor: activity.color }} />
+                )}
+              </div>
               <span className="text-xs font-medium" style={{ color: activity.color }}>{activity.text}</span>
-              {project.openIssuesCount > 0 && (
-                <span className="text-[10px] text-muted-foreground/40 ml-auto">
-                  {project.openIssuesCount} open issues
+              <div className="ml-auto flex items-center gap-2">
+                {project.openIssuesCount > 0 && (
+                  <span className="text-[10px] text-muted-foreground/40">
+                    {project.openIssuesCount} open issues
+                  </span>
+                )}
+                <span className="text-[10px] text-muted-foreground/30 flex items-center gap-1" style={{ color: health.color }}>
+                  <Heart className="w-3 h-3" /> {health.label}
                 </span>
-              )}
+              </div>
             </div>
+
+            {/* ===== SKILL DOTS / CHARACTERISTICS ===== */}
+            {project.codeSignature && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-1.5">
+                <h4 className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1">
+                  <Cpu className="w-3 h-3" /> Project Profile
+                </h4>
+                <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-3 py-2.5 rounded-lg bg-background/20 border border-border/5">
+                  {skillProfile.filter(s => s.score > 0).map(skill => (
+                    <div key={skill.label} className="flex items-center gap-1.5">
+                      <span className="text-[10px] text-muted-foreground/60 w-14">{skill.label}</span>
+                      <div className="flex gap-0.5">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <span
+                            key={i}
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={{
+                              backgroundColor: i < skill.score ? skill.color : 'rgba(255,255,255,0.06)',
+                              opacity: i < skill.score ? 0.8 : 1,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* ===== TECH STACK SECTION ===== */}
+            {project.codeSignature && project.codeSignature.frameworks.length > 0 && (
+              <div>
+                <h4 className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider mb-2 flex items-center gap-1">
+                  <Box className="w-3 h-3" /> Tech Stack
+                </h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {project.codeSignature.frameworks.map(fw => {
+                    const fwColor = FRAMEWORK_COLORS[fw] || '#10b981';
+                    return (
+                      <div
+                        key={fw}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border"
+                        style={{
+                          backgroundColor: fwColor + '10',
+                          borderColor: fwColor + '20',
+                        }}
+                      >
+                        <span
+                          className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold shrink-0"
+                          style={{ backgroundColor: fwColor + '30', color: fwColor }}
+                        >
+                          {fw.charAt(0).toUpperCase()}
+                        </span>
+                        <span className="text-xs font-medium" style={{ color: fwColor }}>{fw}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* ===== DEEP SUMMARY SECTION ===== */}
             {project.deepSummary ? (
@@ -266,13 +501,26 @@ export function DetailPanel() {
                 animate={{ opacity: 1, y: 0 }}
                 className="relative"
               >
-                <h4 className="text-xs font-medium text-emerald-400/80 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-                  <ShieldCheck className="w-3.5 h-3.5" />
-                  Code-Verified Summary
-                  <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-emerald-500/30 text-emerald-400 ml-1">
-                    Deep Analyzed
-                  </Badge>
-                </h4>
+                <div className="flex items-center justify-between mb-1.5">
+                  <h4 className="text-xs font-medium text-emerald-400/80 uppercase tracking-wider flex items-center gap-1.5">
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    Code-Verified Summary
+                    <Badge variant="outline" className="text-[9px] px-1.5 py-0 h-4 border-emerald-500/30 text-emerald-400 ml-1">
+                      Deep Analyzed
+                    </Badge>
+                  </h4>
+                  <button
+                    onClick={handleCopySummary}
+                    className="flex items-center gap-1 text-[10px] text-muted-foreground/40 hover:text-foreground/60 transition-colors px-1.5 py-0.5 rounded hover:bg-card/30"
+                    title="Copy summary to clipboard"
+                  >
+                    {copied ? (
+                      <><Check className="w-3 h-3 text-emerald-400" /> Copied</>
+                    ) : (
+                      <><Copy className="w-3 h-3" /> Copy</>
+                    )}
+                  </button>
+                </div>
                 <p className="text-sm text-foreground/90 leading-relaxed bg-emerald-500/5 border border-emerald-500/10 rounded-lg p-3.5">
                   {project.deepSummary}
                 </p>
@@ -437,13 +685,14 @@ export function DetailPanel() {
               </h4>
               {fileTreeStructure.length > 0 ? (
                 <div className="max-h-64 overflow-y-auto rounded-lg border border-border/10 bg-background/30 p-2 text-xs custom-scrollbar">
-                  {fileTreeStructure.map(node => (
+                  {fileTreeStructure.map((node, idx) => (
                     <FileTreeNodeItem
                       key={node.path}
                       node={node}
                       depth={0}
                       expandedDirs={expandedDirs}
                       toggleDir={toggleDir}
+                      index={idx}
                     />
                   ))}
                 </div>
@@ -727,27 +976,30 @@ export function DetailPanel() {
   );
 }
 
-// File tree node component
+// File tree node component with alternating row backgrounds
 function FileTreeNodeItem({
   node,
   depth,
   expandedDirs,
   toggleDir,
+  index = 0,
 }: {
   node: FileTreeNode;
   depth: number;
   expandedDirs: Set<string>;
   toggleDir: (path: string) => void;
+  index?: number;
 }) {
   const isDir = node.type === 'dir';
   const isExpanded = expandedDirs.has(node.path);
   const fileName = node.path.split('/').pop() || node.path;
+  const isEven = index % 2 === 0;
 
   return (
     <div>
       <button
         onClick={() => isDir && toggleDir(node.path)}
-        className="w-full flex items-center gap-1 py-0.5 px-1 rounded hover:bg-card/40 transition-colors text-left"
+        className={`w-full flex items-center gap-1 py-0.5 px-1 rounded hover:bg-card/40 transition-colors text-left ${isEven ? 'bg-background/5' : ''}`}
         style={{ paddingLeft: `${depth * 12 + 4}px` }}
       >
         {isDir ? (
@@ -770,7 +1022,7 @@ function FileTreeNodeItem({
         </span>
       </button>
       <AnimatePresence>
-        {isDir && isExpanded && node.children?.map(child => (
+        {isDir && isExpanded && node.children?.map((child, ci) => (
           <motion.div
             key={child.path}
             initial={{ opacity: 0, height: 0 }}
@@ -783,6 +1035,7 @@ function FileTreeNodeItem({
               depth={depth + 1}
               expandedDirs={expandedDirs}
               toggleDir={toggleDir}
+              index={ci}
             />
           </motion.div>
         ))}
