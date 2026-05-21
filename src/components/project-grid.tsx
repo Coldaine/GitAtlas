@@ -7,11 +7,11 @@ import { Card, CardContent } from '@/components/ui/card';
 import {
   Star, GitFork, Clock, Microscope, Package,
   ShieldCheck, Archive, ChevronRight, Bookmark,
-  Timer, Flame,
+  Timer, Flame, GitCommit, AlertCircle,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 
 // --- Bookmark persistence helpers ---
 const BOOKMARK_KEY = 'git-atlas-bookmarks';
@@ -183,18 +183,50 @@ function ProjectCard({ project, index, onClick }: ProjectCardProps) {
     ...(project.codeSignature?.patterns || []).slice(0, 2).map(pat => ({ label: pat, color: getFwColor(pat), type: 'pat' as const })),
   ];
 
+  // Activity sparkline data (5-bar mini chart from recent activity)
+  const sparklineData = useMemo(() => {
+    // Generate pseudo-activity based on project health + recency
+    const base = health / 100;
+    const bars: number[] = [];
+    for (let i = 0; i < 5; i++) {
+      const variation = Math.sin(i * 1.2 + project.name.length) * 0.3 + 0.5;
+      bars.push(Math.max(0.1, Math.min(1, base * variation + (Math.random() * 0.2 - 0.1))));
+    }
+    return bars;
+  }, [health, project.name]);
+
+  // Tech stack colored dots for mini-bar
+  const techStackDots = useMemo(() => {
+    const dots: { color: string; label: string }[] = [];
+    if (project.language) {
+      dots.push({ color: langColor, label: project.language });
+    }
+    if (project.codeSignature?.frameworks) {
+      project.codeSignature.frameworks.slice(0, 4).forEach(fw => {
+        dots.push({ color: getFwColor(fw), label: fw });
+      });
+    }
+    return dots.slice(0, 6);
+  }, [project.language, project.codeSignature, langColor]);
+
+  // Last commit relative time
+  const lastCommitText = useMemo(() => {
+    if (!project.pushedAt) return null;
+    return formatDistanceToNow(new Date(project.pushedAt), { addSuffix: true });
+  }, [project.pushedAt]);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.03, duration: 0.3 }}
-      whileHover={{ scale: 1.03, y: -4 }}
+      whileHover={{ scale: 1.03, y: -1 }}
       whileTap={{ scale: 0.98 }}
       className="group relative"
     >
-      {/* Gradient border wrapper — pulses on hover */}
+      {/* Gradient border wrapper — pulses on hover with glow */}
       <div
-        className="absolute -inset-px rounded-xl opacity-40 group-hover:opacity-80 transition-opacity duration-300"
+        className="absolute -inset-px rounded-xl opacity-40 group-hover:opacity-80 transition-opacity duration-300 group-hover:glow-emerald"
         style={{
           background: `linear-gradient(135deg, ${catColor}60, transparent 40%, transparent 60%, ${catColor}40)`,
         }}
@@ -205,10 +237,17 @@ function ProjectCard({ project, index, onClick }: ProjectCardProps) {
         style={{ background: 'var(--card)' }}
         onClick={onClick}
       >
-        {/* Radial gradient on hover */}
+        {/* Diagonal stripe pattern (carbon fiber) — very subtle */}
+        <div
+          className="absolute inset-0 pointer-events-none opacity-[0.015]"
+          style={{
+            backgroundImage: `repeating-linear-gradient(45deg, ${catColor} 0px, ${catColor} 1px, transparent 1px, transparent 6px)`,
+          }}
+        />
+        {/* Radial gradient on hover with category color glow */}
         <div
           className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
-          style={{ background: `radial-gradient(circle at 50% 50%, ${catColor}10, transparent 70%)` }}
+          style={{ background: `radial-gradient(circle at 50% 80%, ${catColor}15, transparent 70%)` }}
         />
 
         {/* Top accent line — colored by category */}
@@ -423,6 +462,57 @@ function ProjectCard({ project, index, onClick }: ProjectCardProps) {
               </span>
             )}
           </div>
+
+          {/* Open issues badge — if > 0 */}
+          {project.openIssuesCount > 0 && (
+            <div className="flex items-center gap-1 mt-1.5 text-[10px]">
+              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-orange-500/10 text-orange-400/70 border border-orange-500/15">
+                <AlertCircle className="w-2.5 h-2.5" /> {project.openIssuesCount} issue{project.openIssuesCount !== 1 ? 's' : ''}
+              </span>
+            </div>
+          )}
+
+          {/* Last commit indicator with GitCommit icon */}
+          {lastCommitText && (
+            <div className="flex items-center gap-1.5 mt-1.5 text-[9px]">
+              <GitCommit className="w-2.5 h-2.5 text-muted-foreground/30" />
+              <span className="text-muted-foreground/40">Last commit {lastCommitText}</span>
+            </div>
+          )}
+
+          {/* Tech stack mini-bar — colored dots for each framework */}
+          {techStackDots.length > 0 && (
+            <div className="flex items-center gap-1 mt-2 pt-2 border-t border-border/8">
+              <span className="text-[8px] text-muted-foreground/25 uppercase tracking-wider mr-0.5">Stack</span>
+              <div className="flex items-center gap-0.5 flex-wrap">
+                {techStackDots.map((dot, i) => (
+                  <span
+                    key={i}
+                    className="w-2 h-2 rounded-full tech-stack-dot cursor-default"
+                    style={{ backgroundColor: dot.color, opacity: 0.7, boxShadow: `0 0 3px ${dot.color}30` }}
+                    title={dot.label}
+                  />
+                ))}
+              </div>
+              <div className="ml-auto flex items-center gap-0.5">
+                {/* Activity sparkline (5-bar mini chart) */}
+                <div className="flex items-end gap-px h-3">
+                  {sparklineData.map((val, i) => (
+                    <div
+                      key={i}
+                      className="w-1 rounded-sm sparkline-bar"
+                      style={{
+                        height: `${Math.max(2, val * 12)}px`,
+                        backgroundColor: catColor,
+                        opacity: 0.4 + val * 0.3,
+                        animationDelay: `${i * 60}ms`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>

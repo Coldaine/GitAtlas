@@ -12,6 +12,7 @@ import {
 import {
   Star, GitFork, GitCommit, Activity,
   FolderOpen, ShieldCheck, AlertTriangle, Clock,
+  TrendingUp, TrendingDown, Trophy, Sparkles,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -179,6 +180,81 @@ export function StatsOverview({ projects }: StatsOverviewProps) {
     return Math.round(((h * 100 + m * 50 + s * 10) / (total * 100)) * 100);
   }, [healthData]);
 
+  // Portfolio Score — computed from stars, repos, analysis completion, activity
+  const portfolioScore = useMemo(() => {
+    let score = 0;
+    // Base: repos count (0-25 points)
+    score += Math.min(25, projects.length * 0.9);
+    // Stars (0-25 points)
+    score += Math.min(25, totalStars * 0.5);
+    // Analysis completion (0-25 points)
+    const analysisPct = projects.length > 0 ? deepAnalyzedCount / projects.length : 0;
+    score += Math.round(analysisPct * 25);
+    // Activity (0-25 points)
+    const activityPct = projects.length > 0 ? recentlyActive / projects.length : 0;
+    score += Math.round(activityPct * 25);
+    return Math.min(100, Math.round(score));
+  }, [projects.length, totalStars, deepAnalyzedCount, recentlyActive]);
+
+  // Key Insights — LLM-style bullet points
+  const keyInsights = useMemo(() => {
+    const insights: string[] = [];
+
+    // Most active language
+    if (langData.length > 0) {
+      insights.push(`Most active language: ${langData[0].name} (${langData[0].pct}% of repos)`);
+    }
+
+    // AI projects count
+    const aiProjects = projects.filter(p =>
+      p.codeSignature?.patterns?.includes('AI/LLM') ||
+      p.codeSignature?.frameworks?.some(f => ['LangChain', 'OpenAI', 'Anthropic', 'MCP'].includes(f))
+    );
+    if (aiProjects.length > 0) {
+      insights.push(`${aiProjects.length} AI/LLM project${aiProjects.length > 1 ? 's' : ''} in your portfolio`);
+    }
+
+    // Deep analysis coverage
+    if (deepAnalyzedCount > 0) {
+      const pct = Math.round((deepAnalyzedCount / projects.length) * 100);
+      insights.push(`${pct}% of repos deep analyzed (${deepAnalyzedCount}/${projects.length})`);
+    }
+
+    // Category breakdown
+    if (catData.length > 0) {
+      insights.push(`Top category: ${catData[0].name} with ${catData[0].value} repos`);
+    }
+
+    // Health
+    if (healthData[0].value > healthData[2].value) {
+      insights.push(`Portfolio is ${Math.round((healthData[0].value / projects.length) * 100)}% healthy — great shape!`);
+    } else if (healthData[2].value > healthData[0].value) {
+      insights.push(`${healthData[2].value} stale repo${healthData[2].value > 1 ? 's' : ''} need attention`);
+    }
+
+    // Recently active
+    if (recentlyActive > 0) {
+      insights.push(`${recentlyActive} repo${recentlyActive > 1 ? 's' : ''} active in the last 30 days`);
+    }
+
+    // Framework diversity
+    if (frameworkData.length > 3) {
+      insights.push(`${frameworkData.length} different frameworks across your projects`);
+    }
+
+    return insights.slice(0, 6);
+  }, [projects, langData, catData, deepAnalyzedCount, healthData, recentlyActive, frameworkData]);
+
+  // Trend indicator for activity
+  const activityTrend = useMemo(() => {
+    if (activityTimeline.length < 2) return 'neutral';
+    const recent = activityTimeline.slice(-3).reduce((s, m) => s + m.count, 0);
+    const older = activityTimeline.slice(-6, -3).reduce((s, m) => s + m.count, 0);
+    if (recent > older * 1.2) return 'up';
+    if (recent < older * 0.8) return 'down';
+    return 'neutral';
+  }, [activityTimeline]);
+
   const tooltipStyle = {
     contentStyle: { background: 'rgba(20,20,20,0.95)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, fontSize: 11 },
     itemStyle: { color: '#e2e8f0' },
@@ -187,8 +263,43 @@ export function StatsOverview({ projects }: StatsOverviewProps) {
   return (
     <div className="h-full overflow-y-auto custom-scrollbar p-4">
       <div className="max-w-5xl mx-auto space-y-4">
-        {/* Portfolio Overview Cards — with gradient backgrounds */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Portfolio Score + Overview Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {/* Portfolio Score card — spans 1 col */}
+          <Card
+            className="border overflow-hidden col-span-2 md:col-span-1 glass-card"
+            style={{
+              borderColor: 'rgba(16,185,129,0.2)',
+              background: 'linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(20,20,25,0.6) 100%)',
+            }}
+          >
+            <CardContent className="p-4 flex flex-col items-center justify-center h-full">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Trophy className="w-4 h-4 text-emerald-400" />
+                <span className="text-[10px] text-emerald-400/70 uppercase tracking-wider font-medium">Portfolio Score</span>
+              </div>
+              <div className="relative w-20 h-20">
+                <svg viewBox="0 0 80 80" className="w-20 h-20 -rotate-90">
+                  <circle cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="5" />
+                  <circle
+                    cx="40" cy="40" r="34" fill="none" stroke="#10b981" strokeWidth="5"
+                    strokeDasharray={`${(portfolioScore / 100) * 213.6} 213.6`}
+                    strokeLinecap="round"
+                    opacity="0.85"
+                    className="progress-ring-animate"
+                    style={{ transition: 'stroke-dasharray 1s ease-out' }}
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-2xl font-bold gradient-text">
+                    <AnimatedCounter target={portfolioScore} />
+                  </span>
+                </div>
+              </div>
+              <p className="text-[9px] text-muted-foreground/40 mt-1">out of 100</p>
+            </CardContent>
+          </Card>
+
           <GradientStatCard
             icon={<FolderOpen className="w-5 h-5 text-emerald-400" />}
             title="Total Repos"
@@ -228,6 +339,38 @@ export function StatsOverview({ projects }: StatsOverviewProps) {
             borderColor="rgba(59,130,246,0.15)"
           />
         </div>
+
+        {/* Key Insights section */}
+        {keyInsights.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.4 }}
+          >
+            <Card className="bg-card/50 border-border/15">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-1.5 mb-2.5">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400/70" />
+                  <h3 className="text-xs font-medium text-emerald-400/70 uppercase tracking-wider">Key Insights</h3>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1.5">
+                  {keyInsights.map((insight, i) => (
+                    <motion.div
+                      key={i}
+                      initial={{ opacity: 0, x: -5 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.05 + 0.3 }}
+                      className="flex items-start gap-2 text-xs text-foreground/70"
+                    >
+                      <span className="w-1 h-1 rounded-full bg-emerald-400/60 shrink-0 mt-1.5" />
+                      <span>{insight}</span>
+                    </motion.div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        )}
 
         {/* Charts row: Language + Category */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -371,8 +514,18 @@ export function StatsOverview({ projects }: StatsOverviewProps) {
           {/* Activity Timeline — with gradient area */}
           <Card className="bg-card/50 border-border/15">
             <CardHeader className="pb-2 pt-3 px-4">
-              <CardTitle className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider">
+              <CardTitle className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider flex items-center gap-2">
                 Activity Timeline
+                {activityTrend === 'up' && (
+                  <span className="flex items-center gap-0.5 text-[9px] text-emerald-400 font-normal normal-case">
+                    <TrendingUp className="w-3 h-3" /> Trending up
+                  </span>
+                )}
+                {activityTrend === 'down' && (
+                  <span className="flex items-center gap-0.5 text-[9px] text-red-400/70 font-normal normal-case">
+                    <TrendingDown className="w-3 h-3" /> Declining
+                  </span>
+                )}
               </CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-3">
@@ -555,12 +708,12 @@ function GradientStatCard({
           <span className="text-[10px] text-muted-foreground/50 uppercase tracking-wider">{title}</span>
           {trend === 'up' && (
             <span className="text-[9px] text-emerald-400 flex items-center gap-0.5 ml-auto">
-              <Activity className="w-2.5 h-2.5" /> Active
+              <TrendingUp className="w-2.5 h-2.5" /> Up
             </span>
           )}
           {trend === 'down' && (
-            <span className="text-[9px] text-muted-foreground/40 flex items-center gap-0.5 ml-auto">
-              <Clock className="w-2.5 h-2.5" /> Low
+            <span className="text-[9px] text-red-400/60 flex items-center gap-0.5 ml-auto">
+              <TrendingDown className="w-2.5 h-2.5" /> Down
             </span>
           )}
         </div>

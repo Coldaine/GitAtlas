@@ -5,7 +5,7 @@ import {
   Search, Network, LayoutGrid, Calendar, BarChart3, Share2,
   Microscope, FileText, Zap, GitCompare, Download, Building2,
   ChevronRight, Clock, Tag, ArrowUp, ArrowDown, CornerDownLeft, XCircle,
-  Target, Bookmark, GitBranch, Sparkles,
+  Target, Bookmark, GitBranch, Sparkles, Heart,
 } from 'lucide-react';
 import { Project, ViewMode, CATEGORY_COLORS } from '@/lib/types';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
@@ -131,6 +131,7 @@ export function CommandPalette({
       { mode: 'radar', label: 'Tech Radar', icon: <Target className="w-4 h-4" />, shortcut: '⌘6' },
       { mode: 'bookmarks', label: 'Bookmarks', icon: <Bookmark className="w-4 h-4" />, shortcut: '⌘7' },
       { mode: 'relationships', label: 'Relationship Map', icon: <GitBranch className="w-4 h-4" />, shortcut: '⌘8' },
+      { mode: 'health', label: 'Health Dashboard', icon: <Heart className="w-4 h-4" />, shortcut: '⌘9' },
     ];
 
     views.forEach(v => {
@@ -212,6 +213,14 @@ export function CommandPalette({
         icon: <Sparkles className="w-4 h-4 text-amber-400" />,
         action: () => { onAIRecommendations(); onClose(); },
         keywords: 'ai recommend suggest llm gap',
+      },
+      {
+        id: 'action-health-dashboard',
+        label: 'Portfolio Health Dashboard',
+        icon: <Heart className="w-4 h-4 text-rose-400" />,
+        shortcut: '⌘9',
+        action: () => { onNavigate('health'); onClose(); },
+        keywords: 'health score portfolio maturity recommendations',
       },
     ];
 

@@ -910,3 +910,80 @@ Stage Summary:
 - AI Recommendations could be persisted to DB for cross-session caching
 - Relationship Map could add animation for zoom transitions
 - Right panel filter tabs could use URL state for persistence
+
+---
+Task ID: 5-b
+Agent: Feature Developer
+Task: Add Portfolio Health Dashboard, Commit Activity Timeline, Project Notes, and Health ViewMode
+
+Work Log:
+- Updated `/src/lib/types.ts` — Added 'health' to ViewMode type: `'graph' | 'grid' | 'timeline' | 'stats' | 'network' | 'radar' | 'bookmarks' | 'relationships' | 'health'`
+- Created `/src/components/health-dashboard.tsx` — Portfolio Health Dashboard:
+  - Overall portfolio health score (0-100) calculated from weighted factors:
+    - % of repos deep analyzed (weight: 20%)
+    - % of repos with READMEs (weight: 15%)
+    - % of repos active in last 90 days (weight: 25%)
+    - Average health score across all repos (weight: 20%)
+    - % of repos not archived (weight: 10%)
+    - Star diversity — repos with ≥1 star (weight: 10%)
+  - Large circular SVG health gauge with animated ring on mount (ease-out cubic over 1.2s)
+  - Color: red (0-40), yellow (40-70), green (70-100) with smooth transitions
+  - Health Factors breakdown with animated progress bars per factor
+  - Recommendations section with actionable items:
+    - "X repos need deep analysis" with Deep Analyze button
+    - "X repos are stale (>6 months)" with list
+    - "X repos are missing READMEs" with list
+    - "X repos have no stars" with encouragement
+    - "Consider archiving unused repos" with archived list
+  - Portfolio Maturity section:
+    - Beginner (0-30), Intermediate (30-60), Advanced (60-80), Expert (80-100)
+    - Each level has description text and "Current" badge for active level
+  - Health Over Time projection chart showing health improving with actions
+  - Project Health list with per-project mini health rings (sorted by score)
+  - Detailed lists for Stale/Missing README/No Stars/Archived repos
+  - Quick Actions panel with Deep Analyze All, Review Stale, Add Missing READMEs, Fix Weakest Repo buttons
+- Created `/src/app/api/github/repo-commits/route.ts` — GET endpoint:
+  - Accepts ?owner=Coldaine&repo=RepoName
+  - Fetches last 100 commits from GitHub API
+  - Groups by week for 12-week chart
+  - Builds 90-day heatmap data
+  - Returns { weeklyActivity, recentCommits (up to 20), heatmapData, totalCommits }
+  - Uses GITHUB_HEADERS from @/lib/github-token for auth
+- Created `/src/components/project-notes.tsx` — Project Notes component:
+  - Notes saved to localStorage with key `git-atlas-notes-{projectId}`
+  - Support for multiple notes per project (with titles)
+  - Markdown preview toggle (Edit/Preview modes)
+  - Pin Note feature — pinned notes shown prominently at top of detail panel
+  - Character count displayed
+  - Timestamp of when note was last edited
+  - Create/Edit/Delete/Pin/Unpin actions
+  - Notes are private and local only
+  - Auto-saves on changes
+- Enhanced `/src/components/detail-panel.tsx`:
+  - Added CommitActivitySection component (inline):
+    - Mini 12-week activity chart with animated vertical bars
+    - 90-day contribution heatmap (5px cells with emerald color intensity)
+    - Recent commits list showing 5 most recent with author avatar, message, date, SHA
+    - "View All Commits" button expanding to show up to 20 commits
+    - Loading and error states
+  - Added Project Notes section below Similar Projects
+  - Imported ProjectNotes component
+- Updated `/src/components/cockpit-dashboard.tsx`:
+  - Imported HealthDashboard component and Heart icon
+  - Added Health Dashboard view rendering with AnimatePresence transitions
+  - Added health view toggle button (Heart icon, rose color) in view mode selector
+  - Added ⌘9 keyboard shortcut for health view
+  - Added ⌘9 entry in keyboard shortcuts overlay
+- Updated `/src/components/command-palette.tsx`:
+  - Added Heart icon import
+  - Added health view to navigation items (⌘9)
+  - Added "Portfolio Health Dashboard" action with keywords
+- Ran `bun run lint` — 0 errors
+
+Stage Summary:
+- **Portfolio Health Dashboard**: Full health scoring system with 6 weighted factors, animated gauge, maturity levels, recommendations, projections, quick actions
+- **Commit Activity Timeline**: Per-repo commit data from GitHub API, weekly chart, 90-day heatmap, recent commits list with expand
+- **Project Notes**: localStorage-based note-taking with Markdown preview, pin feature, multiple notes per project
+- **9 view modes** now available: graph, grid, timeline, stats, network, radar, bookmarks, relationships, health
+- **Keyboard shortcuts**: ⌘9 for health dashboard
+- All lint checks pass cleanly

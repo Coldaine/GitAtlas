@@ -19,6 +19,7 @@ import { BookmarkDashboard } from '@/components/bookmark-dashboard';
 import { RecentCommitsFeed } from '@/components/recent-commits-feed';
 import { RelationshipMap } from '@/components/relationship-map';
 import { AIRecommendations } from '@/components/ai-recommendations';
+import { HealthDashboard } from '@/components/health-dashboard';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -34,27 +35,28 @@ import {
   Building2, BarChart3, RefreshCw, Microscope as DeepAnalyzeIcon,
   Download, Share2, Target, Bookmark as BookmarkIcon,
   Code2, Tag, GitCommit, Hash, Layers, Trophy,
-  PanelLeftClose, PanelLeft, Circle, GitBranch,
+  PanelLeftClose, PanelLeft, Circle, GitBranch, Heart,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 
-// --- AnimatedCounter: counts from 0 to target on mount ---
+// --- AnimatedCounter: counts from 0 to target, re-animates when target changes ---
 function AnimatedCounter({ target, duration = 800 }: { target: number; duration?: number }) {
   const [value, setValue] = useState(0);
   const ref = useRef<ReturnType<typeof requestAnimationFrame>>();
-  const started = useRef(false);
+  const prevTarget = useRef(0);
 
   useEffect(() => {
-    if (started.current) return;
-    started.current = true;
+    // Always animate, even when target changes from 0 to N
+    const startValue = prevTarget.current;
+    prevTarget.current = target;
     const startTime = performance.now();
     const animate = (now: number) => {
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / duration, 1);
       // Ease out cubic
       const eased = 1 - Math.pow(1 - progress, 3);
-      setValue(Math.round(eased * target));
+      setValue(Math.round(startValue + eased * (target - startValue)));
       if (progress < 1) {
         ref.current = requestAnimationFrame(animate);
       }
@@ -146,6 +148,10 @@ export function CockpitDashboard() {
       if (e.key === '8' && e.metaKey) {
         e.preventDefault();
         setViewMode('relationships');
+      }
+      if (e.key === '9' && e.metaKey) {
+        e.preventDefault();
+        setViewMode('health');
       }
       if (e.key === '?' && e.shiftKey) {
         e.preventDefault();
@@ -667,6 +673,13 @@ export function CockpitDashboard() {
             >
               <GitBranch className="w-3.5 h-3.5" />
             </button>
+            <button
+              onClick={() => setViewMode('health')}
+              className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'health' ? 'bg-rose-600/20 text-rose-400' : 'text-muted-foreground hover:text-foreground'}`}
+              title="Health Dashboard (⌘9)"
+            >
+              <Heart className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           <Button
@@ -903,14 +916,90 @@ export function CockpitDashboard() {
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.98 }}
                 transition={{ duration: 0.2, ease: 'easeInOut' }}
-                className="flex-1 flex items-center justify-center h-full"
+                className="flex-1 h-full p-6 overflow-hidden"
               >
-                <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" style={{ animationDuration: '1.5s' }} />
-                  <div className="text-center">
-                    <p className="text-sm text-foreground/80 font-medium">Loading your project universe...</p>
-                    <p className="text-xs text-muted-foreground/40 mt-1">Fetching repos from GitHub</p>
+                {/* Progress bar at top */}
+                <div className="w-full h-1 rounded-full bg-card/50 mb-6 overflow-hidden">
+                  <div className="h-full rounded-full bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500 animate-shimmer" style={{ width: '60%', backgroundSize: '200% 100%' }} />
+                </div>
+
+                {/* Skeleton card grid */}
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+                  {Array.from({ length: 8 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="rounded-xl overflow-hidden border border-border/10"
+                      style={{ animationDelay: `${i * 80}ms` }}
+                    >
+                      {/* Top accent line skeleton */}
+                      <div className="h-1 w-full animate-shimmer rounded-t-xl" style={{ backgroundSize: '200% 100%' }} />
+                      {/* Health bar skeleton */}
+                      <div className="h-0.5 w-full bg-card/30" />
+                      <div className="p-4 space-y-3">
+                        {/* Header row */}
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-10 h-10 rounded-lg animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                          <div className="flex-1 space-y-1.5">
+                            <div className="h-3.5 w-3/4 rounded animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                            <div className="h-2 w-1/2 rounded animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                          </div>
+                        </div>
+                        {/* Summary lines */}
+                        <div className="space-y-1.5">
+                          <div className="h-2.5 w-full rounded animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                          <div className="h-2.5 w-5/6 rounded animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                        </div>
+                        {/* Badge row */}
+                        <div className="flex gap-1.5">
+                          <div className="h-4 w-12 rounded-full animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                          <div className="h-4 w-16 rounded-full animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                          <div className="h-4 w-10 rounded-full animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                        </div>
+                        {/* Bottom metadata */}
+                        <div className="flex items-center gap-2 pt-2 border-t border-border/5">
+                          <div className="h-2 w-12 rounded animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                          <div className="h-2 w-8 rounded animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                          <div className="ml-auto h-2 w-16 rounded animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Skeleton chart outlines */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Pie chart skeleton */}
+                  <div className="rounded-lg border border-border/10 p-4 space-y-3">
+                    <div className="h-2.5 w-28 rounded animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                    <div className="flex items-center justify-center h-32">
+                      <div className="w-28 h-28 rounded-full border-2 border-dashed border-border/15 animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                    </div>
+                    <div className="flex gap-3">
+                      {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="flex items-center gap-1">
+                          <div className="w-2 h-2 rounded-full animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                          <div className="h-2 w-10 rounded animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                        </div>
+                      ))}
+                    </div>
                   </div>
+                  {/* Bar chart skeleton */}
+                  <div className="rounded-lg border border-border/10 p-4 space-y-3">
+                    <div className="h-2.5 w-32 rounded animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                    <div className="space-y-2 h-32 flex flex-col justify-end">
+                      {Array.from({ length: 5 }).map((_, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                          <div className="h-2 w-14 rounded animate-shimmer" style={{ backgroundSize: '200% 100%' }} />
+                          <div className="h-4 rounded animate-shimmer" style={{ width: `${30 + ((i * 17 + 5) % 60)}%`, backgroundSize: '200% 100%' }} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="text-center mt-4">
+                  <p className="text-sm text-foreground/80 font-medium gradient-text">Loading your project universe...</p>
+                  <p className="text-xs text-muted-foreground/40 mt-1">Fetching repos from GitHub</p>
                 </div>
               </motion.div>
             ) : viewMode === 'graph' ? (
@@ -989,6 +1078,22 @@ export function CockpitDashboard() {
                 className="h-full"
               >
                 <RelationshipMap projects={filteredProjects} onProjectClick={(p) => setSelectedProject(p)} />
+              </motion.div>
+            ) : viewMode === 'health' ? (
+              <motion.div
+                key="health"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className="h-full"
+              >
+                <HealthDashboard
+                  projects={filteredProjects}
+                  onDeepAnalyzeAll={handleDeepAnalyzeAll}
+                  isDeepAnalyzing={isDeepAnalyzing}
+                  onProjectClick={(p) => setSelectedProject(p)}
+                />
               </motion.div>
             ) : (
               <motion.div
@@ -1406,6 +1511,7 @@ export function CockpitDashboard() {
                 <ShortcutItem keys="⌘6" description="Tech Radar" />
                 <ShortcutItem keys="⌘7" description="Bookmarks" />
                 <ShortcutItem keys="⌘8" description="Relationship Map" />
+                <ShortcutItem keys="⌘9" description="Health Dashboard" />
                 <ShortcutItem keys="⌘K" description="Command palette" />
                 <ShortcutItem keys="?" description="Show this help" />
                 <ShortcutItem keys="Esc" description="Close dialogs" />

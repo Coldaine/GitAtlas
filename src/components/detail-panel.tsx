@@ -31,6 +31,7 @@ import {
   File,
   ChevronRight,
   ChevronDown,
+  ChevronUp,
   Package,
   Box,
   Cpu,
@@ -57,6 +58,7 @@ import ReactMarkdown from 'react-markdown';
 import { formatDistanceToNow, format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToast } from '@/hooks/use-toast';
+import { ProjectNotes } from '@/components/project-notes';
 
 // Framework color mapping for tech stack boxes
 const FRAMEWORK_COLORS: Record<string, string> = {
@@ -1219,6 +1221,26 @@ export function DetailPanel() {
               )}
             </motion.div>
 
+            {/* ===== COMMIT ACTIVITY SECTION ===== */}
+            <motion.div
+              custom={nextSectionIdx()}
+              variants={sectionVariants}
+              initial="hidden"
+              animate="visible"
+            >
+              <CommitActivitySection owner={project.ownerLogin} repo={project.name} />
+            </motion.div>
+
+            {/* ===== PROJECT NOTES SECTION ===== */}
+            <motion.div
+              custom={nextSectionIdx()}
+              variants={sectionVariants}
+              initial="hidden"
+              animate="visible"
+            >
+              <ProjectNotes projectId={project.id} projectName={project.name} />
+            </motion.div>
+
             <Separator className="bg-border/10 section-divider-dotted" />
 
             {/* Stats Grid */}
@@ -1640,6 +1662,209 @@ function buildTree(files: { path: string; type: 'file' | 'dir' }[]): FileTreeNod
   }
 
   return root;
+}
+
+// Commit Activity Section component
+function CommitActivitySection({ owner, repo }: { owner: string; repo: string }) {
+  const [data, setData] = useState<{
+    weeklyActivity: { week: string; count: number }[];
+    recentCommits: { sha: string; message: string; date: string; author: string; authorAvatar?: string }[];
+    heatmapData: { date: string; count: number }[];
+    totalCommits: number;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [showAllCommits, setShowAllCommits] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/github/repo-commits?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`);
+        if (!res.ok) throw new Error('Failed to fetch');
+        const json = await res.json();
+        if (!cancelled) setData(json);
+      } catch {
+        if (!cancelled) setError('Could not load commit activity');
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    };
+    fetchData();
+    return () => { cancelled = true; };
+  }, [owner, repo]);
+
+  const maxWeeklyCount = useMemo(() => {
+    if (!data?.weeklyActivity) return 1;
+    return Math.max(1, ...data.weeklyActivity.map(w => w.count));
+  }, [data?.weeklyActivity]);
+
+  if (isLoading) {
+    return (
+      <motion.div
+        custom={0}
+        variants={sectionVariants}
+        initial="hidden"
+        animate="visible"
+        className="space-y-2"
+      >
+        <h4 className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1">
+          <GitCommit className="w-3 h-3" /> Commit Activity
+        </h4>
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-background/20">
+          <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-400" />
+          <span className="text-[10px] text-muted-foreground/40">Loading commit data...</span>
+        </div>
+      </motion.div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <motion.div
+        custom={0}
+        variants={sectionVariants}
+        initial="hidden"
+        animate="visible"
+        className="space-y-2"
+      >
+        <h4 className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1">
+          <GitCommit className="w-3 h-3" /> Commit Activity
+        </h4>
+        <p className="text-[10px] text-muted-foreground/30 p-2">{error || 'No commit data available'}</p>
+      </motion.div>
+    );
+  }
+
+  const visibleCommits = showAllCommits ? data.recentCommits : data.recentCommits.slice(0, 5);
+
+  return (
+    <motion.div
+      custom={0}
+      variants={sectionVariants}
+      initial="hidden"
+      animate="visible"
+      className="space-y-3"
+    >
+      <h4 className="text-xs font-medium text-muted-foreground/60 uppercase tracking-wider flex items-center gap-1">
+        <GitCommit className="w-3 h-3" /> Commit Activity
+        <span className="text-[9px] text-muted-foreground/30 normal-case ml-1">
+          ({data.totalCommits} recent commits)
+        </span>
+      </h4>
+
+      {/* Mini weekly activity chart - 12 vertical bars */}
+      {data.weeklyActivity.length > 0 && (
+        <div className="px-3 py-2.5 rounded-lg bg-background/30 border border-border/10">
+          <p className="text-[9px] text-muted-foreground/30 mb-2">Last 12 weeks</p>
+          <div className="flex items-end gap-1 h-12">
+            {data.weeklyActivity.map((week, i) => (
+              <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                <motion.div
+                  initial={{ height: 0 }}
+                  animate={{ height: `${Math.max(2, (week.count / maxWeeklyCount) * 100)}%` }}
+                  transition={{ delay: i * 0.05, duration: 0.3 }}
+                  className="w-full rounded-sm min-h-[2px]"
+                  style={{
+                    backgroundColor: week.count > 0 ? '#10b981' : 'rgba(255,255,255,0.06)',
+                    opacity: week.count > 0 ? 0.6 : 0.3,
+                  }}
+                  title={`${week.week}: ${week.count} commits`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Contribution Heatmap - mini version (90 days) */}
+      {data.heatmapData.length > 0 && (
+        <div className="px-3 py-2.5 rounded-lg bg-background/30 border border-border/10">
+          <p className="text-[9px] text-muted-foreground/30 mb-2">Contribution heatmap (90 days)</p>
+          <div className="flex flex-wrap gap-[2px]">
+            {(() => {
+              // Build a 90-day grid
+              const now = Date.now();
+              const cells: { date: string; count: number }[] = [];
+              for (let i = 89; i >= 0; i--) {
+                const d = new Date(now - i * 24 * 60 * 60 * 1000);
+                const key = d.toISOString().split('T')[0];
+                const found = data.heatmapData.find(h => h.date === key);
+                cells.push({ date: key, count: found?.count || 0 });
+              }
+              return cells.map((cell, i) => (
+                <span
+                  key={i}
+                  className="w-[5px] h-[5px] rounded-[1px]"
+                  style={{
+                    backgroundColor: cell.count === 0
+                      ? 'rgba(255,255,255,0.06)'
+                      : cell.count <= 2
+                      ? 'rgba(16,185,129,0.3)'
+                      : cell.count <= 5
+                      ? 'rgba(16,185,129,0.5)'
+                      : cell.count <= 9
+                      ? 'rgba(16,185,129,0.7)'
+                      : 'rgba(16,185,129,0.9)',
+                  }}
+                  title={`${cell.date}: ${cell.count} commits`}
+                />
+              ));
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Recent commits list */}
+      {data.recentCommits.length > 0 && (
+        <div className="space-y-1">
+          <p className="text-[9px] text-muted-foreground/30 uppercase tracking-wider">Recent Commits</p>
+          {visibleCommits.map((commit, i) => (
+            <div
+              key={commit.sha + i}
+              className="flex items-start gap-2 px-2.5 py-1.5 rounded-lg hover:bg-card/30 transition-colors"
+            >
+              {commit.authorAvatar ? (
+                <img
+                  src={commit.authorAvatar}
+                  alt={commit.author}
+                  className="w-4 h-4 rounded-full shrink-0 mt-0.5"
+                />
+              ) : (
+                <div className="w-4 h-4 rounded-full bg-emerald-500/20 flex items-center justify-center text-[7px] text-emerald-400 font-bold shrink-0 mt-0.5">
+                  {commit.author.charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-[10px] text-foreground/60 truncate">{commit.message}</p>
+                <p className="text-[8px] text-muted-foreground/30 flex items-center gap-1.5 mt-0.5">
+                  <span className="font-mono">{commit.sha}</span>
+                  <span>•</span>
+                  <span>{commit.author}</span>
+                  <span>•</span>
+                  <span>{formatDistanceToNow(new Date(commit.date), { addSuffix: true })}</span>
+                </p>
+              </div>
+            </div>
+          ))}
+          {data.recentCommits.length > 5 && (
+            <button
+              onClick={() => setShowAllCommits(!showAllCommits)}
+              className="w-full text-center py-1 text-[10px] text-emerald-400/60 hover:text-emerald-400 transition-colors flex items-center justify-center gap-1"
+            >
+              {showAllCommits ? (
+                <><ChevronUp className="w-3 h-3" /> Show Less</>
+              ) : (
+                <><ChevronDown className="w-3 h-3" /> View All Commits ({data.recentCommits.length})</>
+              )}
+            </button>
+          )}
+        </div>
+      )}
+    </motion.div>
+  );
 }
 
 function StatItem({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {

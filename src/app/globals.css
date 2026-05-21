@@ -356,3 +356,130 @@
 .needs-attention-pulse {
   animation: needsAttentionPulse 3s ease-in-out infinite;
 }
+
+/* ===== NEW: Comprehensive Styling Enhancements ===== */
+
+/* Shimmer animation for loading states */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-shimmer {
+  background: linear-gradient(90deg, var(--card) 25%, oklch(0.22 0 0) 50%, var(--card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
+}
+
+/* Glassmorphism card utility */
+.glass-card {
+  background: oklch(0.178 0 0 / 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid oklch(1 0 0 / 0.08);
+  box-shadow: 0 4px 30px oklch(0 0 0 / 0.2);
+}
+
+/* Emerald glow utility */
+.glow-emerald {
+  box-shadow: 0 0 15px 3px oklch(0.696 0.17 162.48 / 0.15),
+              0 0 30px 6px oklch(0.696 0.17 162.48 / 0.05);
+}
+
+/* Gradient text utility */
+.gradient-text {
+  background: linear-gradient(135deg, oklch(0.696 0.17 162.48), oklch(0.769 0.188 70.08));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* fadeInUp animation for page sections */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Better custom scrollbar for dark mode — thinner, emerald-tinted */
+.dark ::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.dark ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: oklch(0.35 0.03 162.48);
+  border-radius: 4px;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.5 0.05 162.48);
+}
+
+/* Improved focus-visible styles with emerald ring */
+:focus-visible {
+  outline: 2px solid oklch(0.696 0.17 162.48 / 0.6);
+  outline-offset: 2px;
+  border-radius: 4px;
+  transition: outline-color 0.15s ease;
+}
+
+/* Carbon fiber diagonal stripe pattern for cards */
+.carbon-fiber-bg {
+  background-image:
+    linear-gradient(45deg, oklch(0.16 0 0 / 0.3) 25%, transparent 25%),
+    linear-gradient(-45deg, oklch(0.16 0 0 / 0.3) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, oklch(0.16 0 0 / 0.3) 75%),
+    linear-gradient(-45deg, transparent 75%, oklch(0.16 0 0 / 0.3) 75%);
+  background-size: 8px 8px;
+  background-position: 0 0, 0 4px, 4px -4px, -4px 0;
+}
+
+/* Today marker pulse for timeline */
+@keyframes todayPulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.today-pulse {
+  animation: todayPulse 2s ease-in-out infinite;
+}
+
+/* Sparkline bar animation */
+@keyframes sparklineGrow {
+  from { transform: scaleY(0); }
+  to { transform: scaleY(1); }
+}
+
+.sparkline-bar {
+  transform-origin: bottom;
+  animation: sparklineGrow 0.4s ease-out forwards;
+}
+
+/* Tech stack dot mini-bar */
+.tech-stack-dot {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.tech-stack-dot:hover {
+  transform: scale(1.4);
+  box-shadow: 0 0 6px currentColor;
+}
+
+/* Hover card tooltip styling */
+.hover-card-tooltip {
+  background: oklch(0.15 0 0 / 0.95);
+  border: 1px solid oklch(1 0 0 / 0.1);
+  border-radius: 8px;
+  box-shadow: 0 8px 32px oklch(0 0 0 / 0.4);
+  backdrop-filter: blur(8px);
+}
