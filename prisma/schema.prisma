@@ -59,3 +59,12 @@ model AnalysisJob {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
+
+model CommitActivityCache {
+  id            String   @id @default(cuid())
+  username      String   @unique
+  activityJson  String   // JSON string of activity array
+  totalCommits  Int      @default(0)
+  activeDays    Int      @default(0)
+  fetchedAt     DateTime @default(now())
+}

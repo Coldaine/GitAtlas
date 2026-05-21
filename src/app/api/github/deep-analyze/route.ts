@@ -6,12 +6,19 @@ import ZAI from 'z-ai-web-dev-sdk';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { projectId, username } = body;
+    const { projectId, username, repoIndex } = body;
+    const isProgressive = request.nextUrl.searchParams.get('progress') === 'true';
 
     if (!username) {
       return NextResponse.json({ error: 'username is required' }, { status: 400 });
     }
 
+    // Progressive mode: analyze ONE repo at a time
+    if (isProgressive) {
+      return await handleProgressiveAnalysis(username, repoIndex ?? 0);
+    }
+
+    // Batch mode (original behavior)
     // If projectId is provided, analyze just that project
     // If not, analyze all projects without deep analysis
     const where = projectId
@@ -34,39 +41,7 @@ export async function POST(request: NextRequest) {
       const batchResults = await Promise.allSettled(
         batch.map(async (project) => {
           try {
-            // Build file tree from repo contents via GitHub API
-            const fileTree = await buildFileTree(project.fullName, project.defaultBranch);
-
-            // Analyze dependencies from package.json or similar
-            const dependencies = await analyzeDependencies(project.fullName, project.defaultBranch);
-
-            // Extract key files (entry points, configs, etc)
-            const keyFiles = await extractKeyFiles(project.fullName, project.defaultBranch, fileTree);
-
-            // Detect code signature (frameworks, patterns, architecture)
-            const codeSignature = detectCodeSignature(project, fileTree, dependencies);
-
-            // Generate deep summary using LLM with actual code context
-            const deepSummary = await generateDeepSummary(project, fileTree, dependencies, codeSignature, keyFiles);
-
-            // Find similar projects
-            const similarProjects = await findSimilarProjects(project, username);
-
-            // Update the project with deep analysis results
-            await db.project.update({
-              where: { id: project.id },
-              data: {
-                fileTree: JSON.stringify(fileTree),
-                dependencies: JSON.stringify(dependencies),
-                keyFiles: JSON.stringify(keyFiles),
-                deepSummary,
-                deepAnalyzedAt: new Date(),
-                codeSignature: JSON.stringify(codeSignature),
-                similarProjects: JSON.stringify(similarProjects),
-              },
-            });
-
-            return { id: project.id, name: project.name, status: 'completed' };
+            return await analyzeProject(project, username);
           } catch (err: any) {
             console.error(`Deep analyze error for ${project.name}:`, err.message);
             return { id: project.id, name: project.name, status: 'failed', error: err.message };
@@ -93,6 +68,109 @@ export async function POST(request: NextRequest) {
     console.error('Deep analyze error:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+}
+
+/**
+ * Progressive analysis: analyze ONE repo at a time so the frontend can show
+ * real-time per-repo progress by chaining requests.
+ */
+async function handleProgressiveAnalysis(
+  username: string,
+  repoIndex: number
+): Promise<NextResponse> {
+  // Get all unanalyzed repos for this user
+  const unanalyzed = await db.project.findMany({
+    where: { ownerLogin: username, deepAnalyzedAt: null },
+    orderBy: { githubUpdatedAt: 'desc' },
+  });
+
+  // Count total repos and already-completed for this user
+  const totalForUser = await db.project.count({
+    where: { ownerLogin: username },
+  });
+  const completedCount = await db.project.count({
+    where: { ownerLogin: username, deepAnalyzedAt: { not: null } },
+  });
+
+  if (unanalyzed.length === 0) {
+    return NextResponse.json({
+      result: null,
+      total: totalForUser,
+      completed: completedCount,
+      nextIndex: completedCount,
+      message: 'All projects have been analyzed',
+    });
+  }
+
+  // Clamp repoIndex to valid range
+  const idx = Math.min(Math.max(0, repoIndex), unanalyzed.length - 1);
+  const project = unanalyzed[idx];
+
+  try {
+    const result = await analyzeProject(project, username);
+
+    // Recount completed after this analysis
+    const newCompleted = await db.project.count({
+      where: { ownerLogin: username, deepAnalyzedAt: { not: null } },
+    });
+
+    return NextResponse.json({
+      result,
+      total: totalForUser,
+      completed: newCompleted,
+      nextIndex: newCompleted, // Frontend can use this as the next repoIndex
+    });
+  } catch (err: any) {
+    console.error(`Progressive deep analyze error for ${project.name}:`, err.message);
+    return NextResponse.json({
+      result: { id: project.id, name: project.name, status: 'failed', error: err.message },
+      total: totalForUser,
+      completed: completedCount,
+      nextIndex: completedCount,
+    });
+  }
+}
+
+/**
+ * Analyze a single project — shared by batch and progressive modes.
+ */
+async function analyzeProject(
+  project: any,
+  username: string
+): Promise<{ id: string; name: string; status: string }> {
+  // Build file tree from repo contents via GitHub API
+  const fileTree = await buildFileTree(project.fullName, project.defaultBranch);
+
+  // Analyze dependencies from package.json or similar
+  const dependencies = await analyzeDependencies(project.fullName, project.defaultBranch);
+
+  // Extract key files (entry points, configs, etc)
+  const keyFiles = await extractKeyFiles(project.fullName, project.defaultBranch, fileTree);
+
+  // Detect code signature (frameworks, patterns, architecture)
+  const codeSignature = detectCodeSignature(project, fileTree, dependencies);
+
+  // Generate deep summary using LLM with actual code context
+  const deepSummary = await generateDeepSummary(project, fileTree, dependencies, codeSignature, keyFiles);
+
+  // Find similar projects
+  const similarProjects = await findSimilarProjects(project, username);
+
+  // Update the project with deep analysis results
+  await db.project.update({
+    where: { id: project.id },
+    data: {
+      fileTree: JSON.stringify(fileTree),
+      dependencies: JSON.stringify(dependencies),
+      keyFiles: JSON.stringify(keyFiles),
+      deepSummary,
+      deepAnalyzedAt: new Date(),
+      codeSignature: JSON.stringify(codeSignature),
+      similarProjects: JSON.stringify(similarProjects),
+    },
+  });
+
+  return { id: project.id, name: project.name, status: 'completed' };
 }
 
 async function buildFileTree(fullName: string, branch: string) {

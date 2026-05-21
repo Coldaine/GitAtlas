@@ -270,3 +270,149 @@ Stage Summary:
 - Org-level analysis (ProjectBroadside repos not yet deep-analyzed)
 - Commit history analysis for each project
 - Activity heatmap visualization
+
+---
+Task ID: 4
+Agent: Backend + Analysis Improvements
+Task: Create new API endpoints + enhance deep-analyze with progressive mode
+
+Work Log:
+- Added `CommitActivityCache` model to `prisma/schema.prisma` (username, activityJson, totalCommits, activeDays, fetchedAt)
+- Created `/src/app/api/github/commit-activity/route.ts` — GET endpoint that:
+  - Accepts `?username=Coldaine` query param
+  - Fetches last 100 commits per repo from GitHub API
+  - Aggregates commits by date across all repos (last 365 days)
+  - Returns `{ activity: [{ date, count, repos }], totalCommits, activeDays, cached }`
+  - Caches in CommitActivityCache table, returns cached data if < 1 hour old
+  - Batch fetches (5 repos at a time) with 500ms delays
+- Created `/src/app/api/github/org-repos/route.ts` — GET endpoint that:
+  - Accepts `?org=ProjectBroadside` query param
+  - Fetches `GET /orgs/{org}/repos?per_page=100&type=all` with pagination
+  - Fetches README for each repo (batch of 8)
+  - Upserts into Project table with `ownerType='Organization'`
+  - Returns same format as existing projects API
+- Modified `/src/app/api/github/deep-analyze/route.ts`:
+  - Added `?progress=true` query param support on POST
+  - When `progress=true`, analyzes ONE repo at a time via `handleProgressiveAnalysis()`
+  - Accepts `repoIndex` in body (0-based index into unanalyzed repos list)
+  - Returns `{ result: { id, name, status }, total: N, completed: M, nextIndex: M }`
+  - Extracted `analyzeProject()` helper shared by batch and progressive modes
+  - Original batch mode behavior fully preserved
+- Ran `bun run db:push` — schema synced
+- Ran `bun run lint` — 0 errors
+
+Stage Summary:
+- Commit Activity API: Full 365-day commit history aggregation with 1-hour cache
+- Org Repos API: Fetch and store org repos with ownerType='Organization'
+- Progressive Deep Analysis: Frontend can chain single-repo requests for real-time progress
+- All lint checks pass cleanly
+
+---
+Task ID: 5
+Agent: Frontend Styling & Activity Heatmap
+Task: Activity heatmap, progressive analysis, org repos, styling polish, view transitions
+
+Work Log:
+- Created `/src/components/activity-heatmap.tsx` — GitHub-style contribution heatmap:
+  - Fetches from GET /api/github/commit-activity?username=Coldaine
+  - Renders 52×7 grid of rounded squares with emerald color intensity
+  - Color scale: 0=very dark, 1-2=light green, 3-5=medium, 6-9=bright, 10+=intense
+  - Month labels above, day-of-week labels (Mon, Wed, Fri) on left
+  - SVG tooltip on hover showing date, commit count, and contributing repos
+  - Summary line: "1234 commits in the last year · 89 active days"
+  - Color legend: Less □□□□□ More
+  - Loading state: skeleton grid; Error state: friendly message
+- Added heatmap to left panel of cockpit dashboard (below Activity bar chart)
+- Updated handleDeepAnalyzeAll to use progressive API:
+  - POST to /api/github/deep-analyze?progress=true with { username, repoIndex: 0 }
+  - Chains requests using returned nextIndex
+  - Shows real-time per-repo progress: "Analyzing ComfyWatchman... (3/28)"
+  - Skips already-analyzed repos
+  - Refreshes project list after each repo
+- Added "Org Repos" button to header bar:
+  - Small outline button with Building2 icon (orange theme)
+  - Fetches GET /api/github/org-repos?org=ProjectBroadside
+  - Shows loading state while fetching
+  - Only visible when no org repos present (checks ownerType==='Organization')
+  - Refreshes project list after fetching
+- Styling polish across cockpit dashboard:
+  - Header: gradient background (from-card/50 via-card/30 to-card/50)
+  - Header: subtle emerald glow line below (bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent)
+  - Left panel: section dividers with gradient (from-transparent via-border/20 to-transparent)
+  - Left panel: hover effects on language items (hover:bg-card/40)
+  - Left panel: tag buttons slightly larger (px-2 py-1) with better hover (hover:bg-card/60)
+  - Left panel: category buttons slightly larger (px-2.5 py-1) with hover:bg-card/50
+  - Right panel: left border accent on activity feed items on hover (border-l-2 hover:border-emerald-500/40)
+  - Right panel: pulsing dot on "Deep Analysis" header when analysis is in progress
+  - Right panel: Needs Attention section with warning-style background (bg-orange-500/5)
+  - Right panel: mini sparkline/trend indicator next to Most Starred items (SVG bar chart)
+  - Grid cards: subtle gradient overlay on hover (category color tint at bottom)
+  - Grid cards: animated chevron indicator on hover (ChevronRight)
+  - Grid cards: "Verified" badge with emerald glow animation (shadow-[0_0_6px_rgba(16,185,129,0.4)] animate-pulse)
+  - Loading spinner: slower pulse (animationDuration: 1.5s)
+  - Floating stats pill: glass morphism (bg-card/60 backdrop-blur-xl shadow-lg)
+- Added view transition animations with AnimatePresence:
+  - Center content area wrapped with AnimatePresence mode="wait"
+  - Each view (graph/grid/timeline/loading) gets unique key
+  - Fade + slight scale transition: initial opacity:0 scale:0.98 → animate opacity:1 scale:1
+  - Duration: 0.2s, ease: easeInOut
+- Ran `bun run lint` — 0 errors
+
+Stage Summary:
+- Activity Heatmap: Full GitHub-style contribution graph with emerald color palette
+- Progressive Deep Analysis: Real-time per-repo progress instead of batch wait
+- Org Repos: One-click loading of ProjectBroadside repos
+- Visual polish: gradient header, section dividers, hover effects, warning backgrounds, sparklines
+- View transitions: Smooth animated switching between graph/grid/timeline views
+- Grid cards: gradient overlay, chevron, glowing verified badge
+- All lint checks pass cleanly
+
+---
+Task ID: 8
+Agent: Main (Cron Review)
+Task: QA + Bug fixes + Final assessment + Worklog update
+
+Work Log:
+- Performed comprehensive QA via agent-browser:
+  - App loads correctly with 28 repos for Coldaine
+  - All 3 views (graph, grid, timeline) working
+  - Detail panel shows deep analysis sections correctly
+  - Smart search, keyboard shortcuts, compare dialog all functional
+  - Org Repos button (orange) visible in header
+  - Commit Heatmap confirmed rendering in left panel (1025 commits, 114 active days)
+  - Gradient header + emerald glow line visible
+  - View transitions (AnimatePresence) working
+  - Progressive deep analysis API working
+- Fixed commit-activity API: Added try/catch around `db.commitActivityCache` calls to handle missing Prisma model gracefully (dev server caches old client)
+- Fixed heatmap sizing: Reduced cell size from 10→7px and gap from 2→1px to better fit left panel width (256px)
+- Adjusted SVG offsets for compact heatmap (x=18, y=12, fontSize 6-7)
+- All lint checks pass with 0 errors
+
+Stage Summary:
+- All features from this session verified working:
+  - Commit Activity API: Returns 1025 commits across 365 days, 114 active days
+  - Org Repos API: Successfully fetches ProjectBroadside repos
+  - Progressive Deep Analysis: Single-repo-at-a-time with real-time feedback
+  - Activity Heatmap: GitHub-style contribution graph in left panel
+  - Org Repos Button: One-click org repo loading
+  - Styling Polish: Gradient header, section dividers, hover effects, view transitions
+
+## Current Project Status
+- **28 repos** loaded for Coldaine + **1 org repo** from ProjectBroadside
+- **3 views**: Force-directed graph (with zoom/pan/minimap), card grid, timeline
+- **Commit Heatmap**: 1025 commits, 114 active days across all repos
+- **Progressive Deep Analysis**: Real-time per-repo progress tracking
+- **Smart Search**: "Do I already have X?" with deep analysis data
+- **Compare**: Side-by-side project comparison dialog
+- **Keyboard Shortcuts**: /, ⌘1/2/3, ?, Esc
+- **Detail Panel**: Code-Verified summary, code signature, file tree, dependencies, similar projects, proposed README
+- **Visual Polish**: Gradient header, emerald glow line, section dividers, hover effects, view transitions
+
+## Unresolved / Next Steps
+- **Deep analysis only run on 1/28 repos** — User should click "Deep Analyze" to progressively analyze all repos (each takes ~10-15s)
+- Mobile responsiveness improvements (current layout is desktop-only)
+- Better graph clustering (group by category with background regions)
+- Push proposed READMEs back to GitHub (requires write permissions)
+- "Agentic memory" phase: auto-suggest existing tools when user describes a need
+- Activity heatmap colors may be too subtle for zero-count days (rgba 0.06 opacity)
+- Commit activity API is slow on first load (~15s for 28 repos) — could add loading indicator

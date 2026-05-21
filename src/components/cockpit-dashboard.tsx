@@ -8,6 +8,7 @@ import { TimelineView } from '@/components/timeline-view';
 import { DetailPanel } from '@/components/detail-panel';
 import { SmartSearchDialog } from '@/components/smart-search-dialog';
 import { CompareDialog } from '@/components/compare-dialog';
+import { ActivityHeatmap } from '@/components/activity-heatmap';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -20,6 +21,7 @@ import {
   FolderOpen, Code2, ChevronRight, X,
   Microscope, Calendar, FileText, Keyboard,
   ShieldCheck, AlertTriangle, Archive, GitCompare,
+  Building2,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useState, useMemo, useCallback, useEffect } from 'react';
@@ -40,6 +42,10 @@ export function CockpitDashboard() {
   const [readmeProgress, setReadmeProgress] = useState('');
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [compareOpen, setCompareOpen] = useState(false);
+  const [isLoadingOrgRepos, setIsLoadingOrgRepos] = useState(false);
+
+  // Check if org repos are already loaded
+  const hasOrgRepos = useMemo(() => projects.some(p => p.ownerType === 'Organization'), [projects]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -211,35 +217,58 @@ export function CockpitDashboard() {
     setTimeout(() => setReadmeProgress(''), 5000);
   }, [isRewritingReadmes, projects, username, setProjects]);
 
-  // Deep Analyze All handler
+  // Deep Analyze All handler — progressive mode
   const handleDeepAnalyzeAll = useCallback(async () => {
     if (isDeepAnalyzing) return;
     setDeepAnalyzing(true);
     setDeepAnalyzeCount(0);
-    const totalToAnalyze = projects.length;
-    setDeepAnalyzeProgress(`Starting deep analysis of ${totalToAnalyze} repos...`);
+
+    // Find repos that haven't been deep-analyzed yet
+    const unanalyzed = projects.filter(p => !p.deepAnalyzedAt);
+    const total = unanalyzed.length;
+
+    if (total === 0) {
+      setDeepAnalyzeProgress('All repos already analyzed!');
+      setDeepAnalyzing(false);
+      setTimeout(() => setDeepAnalyzeProgress(''), 3000);
+      return;
+    }
+
+    setDeepAnalyzeProgress(`Starting deep analysis of ${total} repos...`);
+    let nextIndex = 0;
+    let completed = 0;
 
     try {
-      const res = await fetch('/api/github/deep-analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username }),
-      });
+      while (nextIndex !== -1 && nextIndex < total) {
+        const res = await fetch('/api/github/deep-analyze?progress=true', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, repoIndex: nextIndex }),
+        });
 
-      if (res.ok) {
+        if (!res.ok) {
+          setDeepAnalyzeProgress('Deep analysis failed');
+          break;
+        }
+
         const data = await res.json();
-        setDeepAnalyzeCount(data.results?.length || totalToAnalyze);
-        setDeepAnalyzeProgress(`Deep analyzed ${data.results?.length || totalToAnalyze} repos`);
+        completed = data.completed || completed;
+        const repoName = data.result?.name || `repo ${completed}`;
+        setDeepAnalyzeProgress(`Analyzing ${repoName}... (${completed}/${total})`);
+        setDeepAnalyzeCount(completed);
 
-        // Refresh all projects
+        // Refresh projects after each individual repo is done
         const projectsRes = await fetch(`/api/github/projects?username=${username}`);
         if (projectsRes.ok) {
           const projectsData = await projectsRes.json();
           setProjects(projectsData.projects || []);
         }
-      } else {
-        setDeepAnalyzeProgress('Deep analysis failed');
+
+        nextIndex = data.nextIndex;
+        if (nextIndex === -1 || nextIndex >= total) break;
       }
+
+      setDeepAnalyzeProgress(`Done! Deep analyzed ${completed} repos`);
     } catch (err) {
       console.error('Deep analyze all error:', err);
       setDeepAnalyzeProgress('Deep analysis failed');
@@ -250,12 +279,33 @@ export function CockpitDashboard() {
         setDeepAnalyzeCount(0);
       }, 5000);
     }
-  }, [isDeepAnalyzing, projects.length, username, setDeepAnalyzing, setDeepAnalyzeProgress, setProjects]);
+  }, [isDeepAnalyzing, projects, username, setDeepAnalyzing, setDeepAnalyzeProgress, setProjects]);
+
+  // Fetch Org Repos handler
+  const handleFetchOrgRepos = useCallback(async () => {
+    if (isLoadingOrgRepos || hasOrgRepos) return;
+    setIsLoadingOrgRepos(true);
+    try {
+      const res = await fetch('/api/github/org-repos?org=ProjectBroadside');
+      if (res.ok) {
+        // Refresh all projects to include org repos
+        const projectsRes = await fetch(`/api/github/projects?username=${username}`);
+        if (projectsRes.ok) {
+          const projectsData = await projectsRes.json();
+          setProjects(projectsData.projects || []);
+        }
+      }
+    } catch (err) {
+      console.error('Fetch org repos error:', err);
+    } finally {
+      setIsLoadingOrgRepos(false);
+    }
+  }, [isLoadingOrgRepos, hasOrgRepos, username, setProjects]);
 
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden">
-      {/* Top bar — minimal, dense */}
-      <header className="flex items-center gap-3 px-4 py-2 border-b border-border/20 bg-card/30 backdrop-blur-sm shrink-0">
+      {/* Top bar — minimal, dense with gradient */}
+      <header className="flex items-center gap-3 px-4 py-2 bg-gradient-to-r from-card/50 via-card/30 to-card/50 backdrop-blur-sm shrink-0 relative">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-emerald-400" />
           <span className="text-sm font-bold tracking-tight">Git Atlas</span>
@@ -342,6 +392,23 @@ export function CockpitDashboard() {
             <GitCompare className="w-3 h-3" />Compare
           </Button>
 
+          {/* Org Repos */}
+          {!hasOrgRepos && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFetchOrgRepos}
+              disabled={isLoadingOrgRepos}
+              className="h-7 gap-1 text-xs border-orange-500/30 text-orange-400 hover:bg-orange-500/10 px-2"
+            >
+              {isLoadingOrgRepos ? (
+                <><Loader2 className="w-3 h-3 animate-spin" /> Loading...</>
+              ) : (
+                <><Building2 className="w-3 h-3" /> Org Repos</>
+              )}
+            </Button>
+          )}
+
           {/* Deep Analyze All */}
           <Button
             variant="outline"
@@ -417,6 +484,8 @@ export function CockpitDashboard() {
           </Button>
         </div>
       </header>
+      {/* Subtle emerald glow line below header */}
+      <div className="h-px w-full bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent" />
 
       {/* Main cockpit: left panels + center graph + right feed */}
       <div className="flex-1 flex overflow-hidden">
@@ -455,7 +524,7 @@ export function CockpitDashboard() {
                 </div>
                 <div className="space-y-1 mt-1">
                   {langData.slice(0, 6).map(l => (
-                    <div key={l.name} className="flex items-center gap-2 text-[10px]">
+                    <div key={l.name} className="flex items-center gap-2 text-[10px] px-1.5 py-0.5 rounded hover:bg-card/40 transition-colors">
                       <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: l.color }} />
                       <span className="text-foreground/70 flex-1">{l.name}</span>
                       <span className="text-muted-foreground/40">{l.value}</span>
@@ -466,6 +535,9 @@ export function CockpitDashboard() {
                   ))}
                 </div>
               </div>
+
+              {/* Section divider */}
+              <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
 
               {/* Category bar chart */}
               <div>
@@ -509,6 +581,18 @@ export function CockpitDashboard() {
                 </div>
               )}
 
+              {/* Section divider */}
+              <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
+
+              {/* Commit Heatmap */}
+              <div>
+                <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-2">Commit Heatmap</h3>
+                <ActivityHeatmap username={username} />
+              </div>
+
+              {/* Section divider */}
+              <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
+
               {/* Tag cloud */}
               <div>
                 <div className="flex items-center justify-between mb-2">
@@ -526,10 +610,10 @@ export function CockpitDashboard() {
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => toggleTag(tag)}
-                      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] transition-all ${
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded text-[10px] transition-all ${
                         activeTags.includes(tag)
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
-                          : 'bg-card/40 text-muted-foreground/60 border border-border/10 hover:border-border/30 hover:text-foreground/80'
+                          : 'bg-card/40 text-muted-foreground/60 border border-border/10 hover:border-border/30 hover:text-foreground/80 hover:bg-card/60'
                       }`}
                     >
                       {tag} <span className="opacity-40">{count}</span>
@@ -537,6 +621,9 @@ export function CockpitDashboard() {
                   ))}
                 </div>
               </div>
+
+              {/* Section divider */}
+              <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
 
               {/* Category filter */}
               <div>
@@ -548,10 +635,10 @@ export function CockpitDashboard() {
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => toggleTag(c.name)}
-                      className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] transition-all ${
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-[10px] transition-all ${
                         activeTags.includes(c.name)
                           ? 'text-white border'
-                          : 'bg-card/30 text-muted-foreground/60 border border-border/10 hover:border-border/30'
+                          : 'bg-card/30 text-muted-foreground/60 border border-border/10 hover:border-border/30 hover:bg-card/50'
                       }`}
                       style={activeTags.includes(c.name) ? { backgroundColor: c.color + '30', borderColor: c.color + '50', color: c.color } : {}}
                     >
@@ -567,31 +654,63 @@ export function CockpitDashboard() {
 
         {/* CENTER — Main visualization */}
         <div className="flex-1 overflow-hidden relative">
-          {isLoading ? (
-            <div className="flex-1 flex items-center justify-center h-full">
+          <AnimatePresence mode="wait">
+            {isLoading ? (
               <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
+                key="loading"
+                initial={{ opacity: 0, scale: 0.98 }}
                 animate={{ opacity: 1, scale: 1 }}
-                className="flex flex-col items-center gap-3"
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className="flex-1 flex items-center justify-center h-full"
               >
-                <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" />
-                <div className="text-center">
-                  <p className="text-sm text-foreground/80 font-medium">Loading your project universe...</p>
-                  <p className="text-xs text-muted-foreground/40 mt-1">Fetching repos from GitHub</p>
+                <div className="flex flex-col items-center gap-3">
+                  <Loader2 className="w-10 h-10 text-emerald-400 animate-spin" style={{ animationDuration: '1.5s' }} />
+                  <div className="text-center">
+                    <p className="text-sm text-foreground/80 font-medium">Loading your project universe...</p>
+                    <p className="text-xs text-muted-foreground/40 mt-1">Fetching repos from GitHub</p>
+                  </div>
                 </div>
               </motion.div>
-            </div>
-          ) : viewMode === 'graph' ? (
-            <ProjectGraph projects={filteredProjects} />
-          ) : viewMode === 'timeline' ? (
-            <TimelineView projects={filteredProjects} />
-          ) : (
-            <ProjectGrid projects={filteredProjects} />
-          )}
+            ) : viewMode === 'graph' ? (
+              <motion.div
+                key="graph"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className="h-full"
+              >
+                <ProjectGraph projects={filteredProjects} />
+              </motion.div>
+            ) : viewMode === 'timeline' ? (
+              <motion.div
+                key="timeline"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className="h-full"
+              >
+                <TimelineView projects={filteredProjects} />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="grid"
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+                className="h-full"
+              >
+                <ProjectGrid projects={filteredProjects} />
+              </motion.div>
+            )}
+          </AnimatePresence>
 
-          {/* Floating stats pill at bottom of graph */}
+          {/* Floating stats pill at bottom of graph — glass morphism */}
           {!isLoading && (
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-1.5 rounded-full bg-card/80 backdrop-blur-md border border-border/20 text-[10px] text-muted-foreground/60">
+            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-1.5 rounded-full bg-card/60 backdrop-blur-xl border border-border/20 text-[10px] text-muted-foreground/60 shadow-lg shadow-black/10">
               <span>{filteredProjects.length} of {projects.length} projects</span>
               {activeTags.length > 0 && <span>Filtered by {activeTags.length} tags</span>}
               {searchQuery && <span>Matching &quot;{searchQuery}&quot;</span>}
@@ -618,7 +737,7 @@ export function CockpitDashboard() {
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.03 }}
                     onClick={() => setSelectedProject(p)}
-                    className="w-full text-left p-2 rounded-md hover:bg-card/40 transition-colors group"
+                    className="w-full text-left p-2 rounded-md hover:bg-card/40 transition-all group border-l-2 border-transparent hover:border-emerald-500/40"
                   >
                     <div className="flex items-start gap-2">
                       <div className="relative mt-0.5">
@@ -664,6 +783,9 @@ export function CockpitDashboard() {
             <div className="flex items-center justify-between mb-1.5">
               <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider flex items-center gap-1">
                 <Microscope className="w-2.5 h-2.5" /> Deep Analysis
+                {isDeepAnalyzing && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                )}
               </h3>
               <span className="text-[9px] text-emerald-400/50">{deepAnalyzedCount}/{projects.length}</span>
             </div>
@@ -682,8 +804,8 @@ export function CockpitDashboard() {
 
           {/* Needs Attention */}
           {projects.filter(p => p.isArchived || (p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() > 180 * 24 * 60 * 60 * 1000))).length > 0 && (
-            <div className="border-t border-border/10 px-3 py-2">
-              <h3 className="text-[10px] font-medium text-orange-400/50 uppercase tracking-wider mb-1.5 flex items-center gap-1">
+            <div className="border-t border-border/10 px-3 py-2 bg-orange-500/5">
+              <h3 className="text-[10px] font-medium text-orange-400/60 uppercase tracking-wider mb-1.5 flex items-center gap-1">
                 <AlertTriangle className="w-2.5 h-2.5" /> Needs Attention
               </h3>
               {projects
@@ -693,15 +815,15 @@ export function CockpitDashboard() {
                   <button
                     key={p.id}
                     onClick={() => setSelectedProject(p)}
-                    className="w-full flex items-center gap-2 py-1 text-left hover:bg-card/30 rounded px-1 transition-colors"
+                    className="w-full flex items-center gap-2 py-1 text-left hover:bg-orange-500/10 rounded px-1 transition-colors"
                   >
                     {p.isArchived ? (
-                      <Archive className="w-3 h-3 text-orange-400/50" />
+                      <Archive className="w-3 h-3 text-orange-400/60" />
                     ) : (
                       <Clock className="w-3 h-3 text-muted-foreground/30" />
                     )}
                     <span className="text-[10px] text-foreground/50 truncate flex-1">{p.name}</span>
-                    <span className="text-[8px] text-orange-400/40">
+                    <span className="text-[8px] text-orange-400/50 font-medium">
                       {p.isArchived ? 'archived' : '6mo+'}
                     </span>
                   </button>
@@ -712,17 +834,27 @@ export function CockpitDashboard() {
           {/* Top Starred */}
           <div className="border-t border-border/10 px-3 py-2">
             <h3 className="text-[10px] font-medium text-muted-foreground/50 uppercase tracking-wider mb-1.5">Most Starred</h3>
-            {[...projects].sort((a, b) => b.stargazersCount - a.stargazersCount).slice(0, 4).map(p => (
-              <button
-                key={p.id}
-                onClick={() => setSelectedProject(p)}
-                className="w-full flex items-center gap-2 py-1 text-left hover:bg-card/30 rounded px-1 transition-colors"
-              >
-                <Star className="w-3 h-3 text-amber-400/60" />
-                <span className="text-[10px] text-foreground/60 truncate flex-1">{p.name}</span>
-                <span className="text-[10px] text-amber-400/50 font-medium">{p.stargazersCount}</span>
-              </button>
-            ))}
+            {[...projects].sort((a, b) => b.stargazersCount - a.stargazersCount).slice(0, 4).map(p => {
+              const starTrend = p.stargazersCount > 0 ? Math.min(p.stargazersCount / 5, 20) : 0;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => setSelectedProject(p)}
+                  className="w-full flex items-center gap-2 py-1 text-left hover:bg-card/30 rounded px-1 transition-colors"
+                >
+                  <Star className="w-3 h-3 text-amber-400/60" />
+                  <span className="text-[10px] text-foreground/60 truncate flex-1">{p.name}</span>
+                  <svg width="24" height="12" className="shrink-0">
+                    <rect x="0" y={8 - starTrend * 0.3} width="3" height={starTrend * 0.3 + 2} rx="1" fill="rgba(245,158,11,0.2)" />
+                    <rect x="5" y={6 - starTrend * 0.4} width="3" height={starTrend * 0.4 + 2} rx="1" fill="rgba(245,158,11,0.3)" />
+                    <rect x="10" y={4 - starTrend * 0.5} width="3" height={starTrend * 0.5 + 2} rx="1" fill="rgba(245,158,11,0.4)" />
+                    <rect x="15" y={2 - starTrend * 0.6} width="3" height={starTrend * 0.6 + 2} rx="1" fill="rgba(245,158,11,0.5)" />
+                    <rect x="20" y={0} width="3" height={starTrend * 0.7 + 2} rx="1" fill="rgba(245,158,11,0.6)" />
+                  </svg>
+                  <span className="text-[10px] text-amber-400/50 font-medium">{p.stargazersCount}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
       </div>

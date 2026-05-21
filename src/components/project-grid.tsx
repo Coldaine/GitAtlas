@@ -4,7 +4,7 @@ import { Project, CATEGORY_COLORS, LANGUAGE_COLORS } from '@/lib/types';
 import { useAtlasStore } from '@/lib/store';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Star, GitFork, ExternalLink, Clock, Microscope, Cpu, Package, ShieldCheck, AlertTriangle, Archive } from 'lucide-react';
+import { Star, GitFork, ExternalLink, Clock, Microscope, Cpu, Package, ShieldCheck, AlertTriangle, Archive, ChevronRight } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -77,6 +77,17 @@ function ProjectCard({ project, index, onClick }: ProjectCardProps) {
         {/* Top accent line — colored by category */}
         <div className="h-0.5 w-full" style={{ backgroundColor: catColor, opacity: 0.6 }} />
 
+        {/* Gradient overlay on hover */}
+        <div
+          className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"
+          style={{ background: `linear-gradient(to top, ${catColor}08, transparent 40%)` }}
+        />
+
+        {/* Animated chevron indicator on hover */}
+        <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-1 group-hover:translate-x-0">
+          <ChevronRight className="w-4 h-4 text-muted-foreground/30" />
+        </div>
+
         <CardContent className="p-4">
           {/* Header row */}
           <div className="flex items-start gap-2 mb-2">
@@ -92,9 +103,9 @@ function ProjectCard({ project, index, onClick }: ProjectCardProps) {
                  project.category === 'template' ? '📋' :
                  project.category === 'config' ? '🔧' : '●'}
               </div>
-              {/* Deep analysis badge */}
+              {/* Deep analysis badge with glow */}
               {project.deepAnalyzedAt && (
-                <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center ring-2 ring-card">
+                <div className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 flex items-center justify-center ring-2 ring-card shadow-[0_0_6px_rgba(16,185,129,0.4)] animate-pulse" style={{ animationDuration: '3s' }}>
                   <ShieldCheck className="w-2 h-2 text-white" />
                 </div>
               )}
