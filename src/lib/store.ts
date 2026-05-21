@@ -13,8 +13,8 @@ interface AtlasState {
   selectedProject: Project | null;
   searchQuery: string;
   activeTags: string[];
-  sidebarOpen: boolean;
   detailOpen: boolean;
+  isDataLoaded: boolean;
 
   setUsername: (u: string) => void;
   setProjects: (p: Project[]) => void;
@@ -28,15 +28,15 @@ interface AtlasState {
   setSearchQuery: (q: string) => void;
   toggleTag: (t: string) => void;
   setActiveTags: (t: string[]) => void;
-  setSidebarOpen: (o: boolean) => void;
   setDetailOpen: (o: boolean) => void;
+  setDataLoaded: (l: boolean) => void;
 }
 
 export const useAtlasStore = create<AtlasState>((set) => ({
-  username: '',
+  username: 'Coldaine',
   projects: [],
   analysisJob: null,
-  isLoading: false,
+  isLoading: true,
   isAnalyzing: false,
   fetchProgress: '',
   analyzeProgress: '',
@@ -44,8 +44,8 @@ export const useAtlasStore = create<AtlasState>((set) => ({
   selectedProject: null,
   searchQuery: '',
   activeTags: [],
-  sidebarOpen: true,
   detailOpen: false,
+  isDataLoaded: false,
 
   setUsername: (u) => set({ username: u }),
   setProjects: (p) => set({ projects: p }),
@@ -64,6 +64,6 @@ export const useAtlasStore = create<AtlasState>((set) => ({
         : [...state.activeTags, t],
     })),
   setActiveTags: (t) => set({ activeTags: t }),
-  setSidebarOpen: (o) => set({ sidebarOpen: o }),
   setDetailOpen: (o) => set({ detailOpen: o }),
+  setDataLoaded: (l) => set({ isDataLoaded: l }),
 }));
