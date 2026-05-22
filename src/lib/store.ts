@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Project, AnalysisJob, ViewMode } from './types';
+import { Project, AnalysisJob, ViewMode, GraphLayout, NodeSizeBy, ColorBy } from './types';
 
 interface AtlasState {
   username: string;
@@ -18,6 +18,22 @@ interface AtlasState {
   isDeepAnalyzing: boolean;
   deepAnalyzeProgress: string;
 
+  // Graph settings
+  graphLayout: GraphLayout;
+  nodeSizeBy: NodeSizeBy;
+  colorBy: ColorBy;
+  edgeThreshold: number;
+  showParticles: boolean;
+  showClusterBackgrounds: boolean;
+  showHealthRings: boolean;
+  showDependencyEdges: boolean;
+  animationSpeed: number;
+  showEdgeLabels: boolean;
+
+  // Concept group filters
+  activeConceptGroups: string[];
+
+  // Setters
   setUsername: (u: string) => void;
   setProjects: (p: Project[]) => void;
   setAnalysisJob: (j: AnalysisJob | null) => void;
@@ -35,6 +51,22 @@ interface AtlasState {
   setDeepAnalyzing: (v: boolean) => void;
   setDeepAnalyzeProgress: (v: string) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
+
+  // Graph settings setters
+  setGraphLayout: (v: GraphLayout) => void;
+  setNodeSizeBy: (v: NodeSizeBy) => void;
+  setColorBy: (v: ColorBy) => void;
+  setEdgeThreshold: (v: number) => void;
+  setShowParticles: (v: boolean) => void;
+  setShowClusterBackgrounds: (v: boolean) => void;
+  setShowHealthRings: (v: boolean) => void;
+  setShowDependencyEdges: (v: boolean) => void;
+  setAnimationSpeed: (v: number) => void;
+  setShowEdgeLabels: (v: boolean) => void;
+
+  // Concept group setters
+  toggleConceptGroup: (g: string) => void;
+  setActiveConceptGroups: (g: string[]) => void;
 }
 
 export const useAtlasStore = create<AtlasState>((set) => ({
@@ -53,6 +85,21 @@ export const useAtlasStore = create<AtlasState>((set) => ({
   isDataLoaded: false,
   isDeepAnalyzing: false,
   deepAnalyzeProgress: '',
+
+  // Graph settings defaults
+  graphLayout: 'force',
+  nodeSizeBy: 'default',
+  colorBy: 'category',
+  edgeThreshold: 2,
+  showParticles: true,
+  showClusterBackgrounds: true,
+  showHealthRings: true,
+  showDependencyEdges: true,
+  animationSpeed: 1,
+  showEdgeLabels: true,
+
+  // Concept group defaults
+  activeConceptGroups: [],
 
   setUsername: (u) => set({ username: u }),
   setProjects: (p) => set({ projects: p }),
@@ -83,4 +130,25 @@ export const useAtlasStore = create<AtlasState>((set) => ({
           ? { ...state.selectedProject, ...updates }
           : state.selectedProject,
     })),
+
+  // Graph settings setters
+  setGraphLayout: (v) => set({ graphLayout: v }),
+  setNodeSizeBy: (v) => set({ nodeSizeBy: v }),
+  setColorBy: (v) => set({ colorBy: v }),
+  setEdgeThreshold: (v) => set({ edgeThreshold: v }),
+  setShowParticles: (v) => set({ showParticles: v }),
+  setShowClusterBackgrounds: (v) => set({ showClusterBackgrounds: v }),
+  setShowHealthRings: (v) => set({ showHealthRings: v }),
+  setShowDependencyEdges: (v) => set({ showDependencyEdges: v }),
+  setAnimationSpeed: (v) => set({ animationSpeed: v }),
+  setShowEdgeLabels: (v) => set({ showEdgeLabels: v }),
+
+  // Concept group setters
+  toggleConceptGroup: (g) =>
+    set((state) => ({
+      activeConceptGroups: state.activeConceptGroups.includes(g)
+        ? state.activeConceptGroups.filter((x) => x !== g)
+        : [...state.activeConceptGroups, g],
+    })),
+  setActiveConceptGroups: (g) => set({ activeConceptGroups: g }),
 }));

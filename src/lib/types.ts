@@ -57,6 +57,12 @@ export interface AnalysisJob {
 
 export type ViewMode = 'graph' | 'grid' | 'timeline' | 'stats' | 'network' | 'radar' | 'bookmarks' | 'relationships' | 'health';
 
+export type GraphLayout = 'force' | 'radial' | 'circular' | 'hierarchical' | 'grid' | 'spiral';
+
+export type NodeSizeBy = 'stars' | 'activity' | 'dependencies' | 'files' | 'default';
+
+export type ColorBy = 'category' | 'language' | 'health' | 'activity';
+
 export const CATEGORY_COLORS: Record<string, string> = {
   tool: '#10b981',
   library: '#f59e0b',

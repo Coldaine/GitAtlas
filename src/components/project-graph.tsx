@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useAtlasStore } from '@/lib/store';
-import { Project, CATEGORY_COLORS, LANGUAGE_COLORS } from '@/lib/types';
+import { Project, CATEGORY_COLORS, LANGUAGE_COLORS, ColorBy, NodeSizeBy } from '@/lib/types';
 import { ProjectHoverCard } from '@/components/project-hover-card';
+import { GraphLegend } from '@/components/graph-legend';
 import { RotateCcw, ExternalLink, Sparkles, Bookmark, FileText } from 'lucide-react';
 
 interface NodePosition {
@@ -22,6 +23,7 @@ interface Edge {
   target: string;
   weight: number;
   type: 'tag' | 'dependency';
+  sharedItems?: string[];
 }
 
 interface ProjectGraphProps {
@@ -63,8 +65,19 @@ function computeHealth(project: { pushedAt?: string | null; openIssuesCount: num
   return Math.max(0, Math.min(100, score));
 }
 
+// Count files in a file tree recursively
+function countFiles(tree: { type: string; children?: { type: string; children?: unknown[] }[] }): number {
+  let count = tree.type === 'file' ? 1 : 0;
+  if (tree.children) {
+    for (const child of tree.children) {
+      count += countFiles(child as { type: string; children?: { type: string; children?: unknown[] }[] });
+    }
+  }
+  return count;
+}
+
 export function ProjectGraph({ projects }: ProjectGraphProps) {
-  const { setSelectedProject, activeTags } = useAtlasStore();
+  const { setSelectedProject, activeTags, nodeSizeBy, colorBy, edgeThreshold, showParticles, showClusterBackgrounds, showHealthRings, showDependencyEdges, animationSpeed } = useAtlasStore();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes] = useState<NodePosition[]>([]);
@@ -86,6 +99,12 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
   const panStartRef = useRef({ x: 0, y: 0 });
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
+
+  // Hovered edge tooltip state
+  const [hoveredEdgeInfo, setHoveredEdgeInfo] = useState<{ x: number; y: number; label: string } | null>(null);
+
+  // Connections panel state (shown on node click)
+  const [connectionsPanel, setConnectionsPanel] = useState<{ nodeId: string; connections: { nodeId: string; projectName: string; sharedItems: string[]; edgeType: 'tag' | 'dependency' }[] } | null>(null);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
@@ -112,18 +131,67 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
 
   const nodeSize = useCallback((p: Project) => {
     const base = 10;
-    const starBonus = Math.min(p.stargazersCount * 3, 15);
-    const recencyBonus = p.pushedAt ? (Date.now() - new Date(p.pushedAt).getTime() < 30 * 24 * 60 * 60 * 1000 ? 3 : 0) : 0;
-    return base + starBonus + recencyBonus;
-  }, []);
+    switch (nodeSizeBy) {
+      case 'stars':
+        return base + Math.min(p.stargazersCount * 3, 18);
+      case 'activity': {
+        if (!p.pushedAt) return base;
+        const daysSince = (Date.now() - new Date(p.pushedAt).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSince < 7) return base + 12;
+        if (daysSince < 30) return base + 8;
+        if (daysSince < 90) return base + 4;
+        if (daysSince > 365) return base - 2;
+        return base;
+      }
+      case 'dependencies': {
+        const depCount = p.dependencies
+          ? (p.dependencies.runtime?.length || 0) + (p.dependencies.dev?.length || 0)
+          : 0;
+        return base + Math.min(depCount * 0.5, 14);
+      }
+      case 'files': {
+        const fileCount = p.fileTree ? countFiles(p.fileTree) : 0;
+        return base + Math.min(fileCount * 0.05, 14);
+      }
+      default: {
+        const starBonus = Math.min(p.stargazersCount * 3, 15);
+        const recencyBonus = p.pushedAt ? (Date.now() - new Date(p.pushedAt).getTime() < 30 * 24 * 60 * 60 * 1000 ? 3 : 0) : 0;
+        return base + starBonus + recencyBonus;
+      }
+    }
+  }, [nodeSizeBy]);
 
   const nodeColor = useCallback((p: Project) => {
-    if (p.category && CATEGORY_COLORS[p.category]) return CATEGORY_COLORS[p.category];
-    if (p.language && LANGUAGE_COLORS[p.language]) return LANGUAGE_COLORS[p.language];
-    return '#64748b';
-  }, []);
+    switch (colorBy) {
+      case 'category':
+        if (p.category && CATEGORY_COLORS[p.category]) return CATEGORY_COLORS[p.category];
+        if (p.language && LANGUAGE_COLORS[p.language]) return LANGUAGE_COLORS[p.language];
+        return '#64748b';
+      case 'language':
+        if (p.language && LANGUAGE_COLORS[p.language]) return LANGUAGE_COLORS[p.language];
+        if (p.category && CATEGORY_COLORS[p.category]) return CATEGORY_COLORS[p.category];
+        return '#64748b';
+      case 'health': {
+        const score = computeHealth(p);
+        if (score >= 70) return '#10b981';
+        if (score >= 40) return '#f59e0b';
+        return '#ef4444';
+      }
+      case 'activity': {
+        if (!p.pushedAt) return '#64748b';
+        const daysSince = (Date.now() - new Date(p.pushedAt).getTime()) / (1000 * 60 * 60 * 24);
+        if (daysSince < 7) return '#10b981';
+        if (daysSince < 30) return '#84cc16';
+        if (daysSince < 180) return '#f59e0b';
+        return '#64748b';
+      }
+      default:
+        if (p.category && CATEGORY_COLORS[p.category]) return CATEGORY_COLORS[p.category];
+        return '#64748b';
+    }
+  }, [colorBy]);
 
-  // Build edges from projects
+  // Build edges from projects — respects edgeThreshold and showDependencyEdges
   const computedEdges = useMemo(() => {
     const newEdges: Edge[] = [];
     for (let i = 0; i < projects.length; i++) {
@@ -134,22 +202,22 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         const aTags = new Set([...a.tags, ...a.topics, a.language].filter(Boolean));
         const bTags = new Set([...b.tags, ...b.topics, b.language].filter(Boolean));
         const shared = [...aTags].filter((t) => bTags.has(t));
-        if (shared.length >= 2) {
-          newEdges.push({ source: a.id, target: b.id, weight: shared.length, type: 'tag' });
+        if (shared.length >= edgeThreshold) {
+          newEdges.push({ source: a.id, target: b.id, weight: shared.length, type: 'tag', sharedItems: shared });
         }
 
-        if (a.dependencies && b.dependencies) {
+        if (showDependencyEdges && a.dependencies && b.dependencies) {
           const aAll = [...(a.dependencies.runtime || []), ...(a.dependencies.dev || [])];
           const bAll = [...(b.dependencies.runtime || []), ...(b.dependencies.dev || [])];
           const sharedDeps = aAll.filter(d => bAll.includes(d));
-          if (sharedDeps.length >= 3) {
-            newEdges.push({ source: a.id, target: b.id, weight: sharedDeps.length, type: 'dependency' });
+          if (sharedDeps.length >= Math.max(edgeThreshold, 3)) {
+            newEdges.push({ source: a.id, target: b.id, weight: sharedDeps.length, type: 'dependency', sharedItems: sharedDeps });
           }
         }
       }
     }
     return newEdges;
-  }, [projects]);
+  }, [projects, edgeThreshold, showDependencyEdges]);
 
   // Category cluster labels
   const categoryLabels = useMemo(() => {
@@ -546,15 +614,30 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     return connected;
   }, [hoveredNode, edges]);
 
-  // Get category icon
+  // Get category icon — expanded with more expressive emoji
+  const CATEGORY_EMOJI: Record<string, string> = {
+    tool: '⚙️',
+    library: '📚',
+    application: '🖥️',
+    template: '📋',
+    experiment: '🧪',
+    config: '🔧',
+    documentation: '📖',
+    learning: '🎓',
+    archive: '📦',
+    // NEW:
+    ai: '🧠',
+    creative: '🎨',
+    security: '🔒',
+    data: '📊',
+    infra: '🏗️',
+    web: '🌐',
+  };
+
   const categoryIcon = useCallback((cat: string | null) => {
     if (!cat) return '?';
-    const map: Record<string, string> = {
-      tool: '⚙', library: '📚', application: '🖥', template: '📋',
-      experiment: '🧪', config: '🔧', documentation: '📖', learning: '🎓', archive: '📦',
-    };
-    return map[cat] || '●';
-  }, []);
+    return CATEGORY_EMOJI[cat] || '●';
+  }, [CATEGORY_EMOJI]);
 
   // Reset view handler
   const handleResetView = useCallback(() => {
@@ -710,7 +793,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
             </text>
           ))}
 
-          {/* Edges */}
+          {/* Edges — with weight-based thickness, connection badges, and hover tooltips */}
           {edges.map((edge, i) => {
             const source = nodes.find((n) => n.id === edge.source);
             const target = nodes.find((n) => n.id === edge.target);
@@ -727,22 +810,74 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
             const gradientId = `grad-${edge.source}-${edge.target}`;
             const stroke = isHighlighted && !isDependency ? `url(#${gradientId})` : color;
 
+            // Edge weight: thicker edges = more shared items
+            const baseWidth = isDependency
+              ? Math.min(1 + (edge.weight - 3) * 0.5, 4) // base 1, +0.5 per shared dep, max 4
+              : Math.min(0.5 + (edge.weight - 2) * 0.3, 3); // base 0.5, +0.3 per shared tag, max 3
+            const highlightedWidth = isDependency
+              ? Math.min(baseWidth + 1.5, 5)
+              : Math.min(baseWidth + 1, 4);
+            const strokeWidth = isHighlighted ? highlightedWidth : baseWidth;
+
+            // Midpoint for badge/tooltip
+            const midX = (source.x + target.x) / 2;
+            const midY = (source.y + target.y) / 2;
+
             // Compute pulse position along edge
             const px = source.x + (target.x - source.x) * pulseProgress;
             const py = source.y + (target.y - source.y) * pulseProgress;
 
+            // Build tooltip label
+            const sharedLabel = isDependency
+              ? `Shared deps: ${(edge.sharedItems || []).slice(0, 5).join(', ')}${(edge.sharedItems || []).length > 5 ? '...' : ''}`
+              : `Shared: ${(edge.sharedItems || []).slice(0, 5).join(', ')}${(edge.sharedItems || []).length > 5 ? '...' : ''}`;
+
             return (
               <g key={`edge-${i}`}>
+                {/* Glow layer for highlighted edges */}
+                {isHighlighted && (
+                  <line
+                    x1={source.x}
+                    y1={source.y}
+                    x2={target.x}
+                    y2={target.y}
+                    stroke={highlightColor}
+                    strokeWidth={strokeWidth + 4}
+                    opacity={0.12}
+                    className="pointer-events-none"
+                    filter="url(#glow)"
+                  />
+                )}
                 <line
                   x1={source.x}
                   y1={source.y}
                   x2={target.x}
                   y2={target.y}
                   stroke={stroke}
-                  strokeWidth={isHighlighted ? Math.min(edge.weight * 1, 3) : isDependency ? 1 : 0.5}
+                  strokeWidth={strokeWidth}
                   opacity={opacity}
                   strokeDasharray={isDependency && !isHighlighted ? '4 4' : undefined}
                   style={{ transition: 'opacity 0.3s, stroke-width 0.3s' }}
+                />
+                {/* Invisible wider hit area for edge hover */}
+                <line
+                  x1={source.x}
+                  y1={source.y}
+                  x2={target.x}
+                  y2={target.y}
+                  stroke="transparent"
+                  strokeWidth={12}
+                  className="cursor-pointer"
+                  onMouseEnter={(e) => {
+                    const rect = svgRef.current?.getBoundingClientRect();
+                    if (!rect) return;
+                    setHoveredEdgeInfo({
+                      x: e.clientX - rect.left,
+                      y: e.clientY - rect.top,
+                      label: sharedLabel,
+                    });
+                  }}
+                  onMouseLeave={() => setHoveredEdgeInfo(null)}
                 />
                 {/* Animated pulse dot traveling along highlighted edge */}
                 {isHighlighted && (
@@ -755,6 +890,32 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                     className="pointer-events-none"
                     filter="url(#glow)"
                   />
+                )}
+                {/* Connection count badge at midpoint for highlighted edges */}
+                {isHighlighted && (
+                  <g className="pointer-events-none">
+                    <circle
+                      cx={midX}
+                      cy={midY}
+                      r={8}
+                      fill="rgba(10,10,10,0.85)"
+                      stroke={highlightColor}
+                      strokeWidth={1}
+                      opacity={0.9}
+                    />
+                    <text
+                      x={midX}
+                      y={midY + 1}
+                      textAnchor="middle"
+                      dominantBaseline="central"
+                      fill={highlightColor}
+                      fontSize={7}
+                      fontWeight="700"
+                      style={{ fontFamily: 'var(--font-geist-sans)' }}
+                    >
+                      {edge.weight}
+                    </text>
+                  </g>
                 )}
               </g>
             );
@@ -800,7 +961,21 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                 onMouseDown={(e) => handleMouseDown(node.id, e)}
                 onDoubleClick={() => handleDoubleClick(node.id)}
                 onContextMenu={(e) => handleContextMenu(node.id, e)}
-                onClick={() => setSelectedProject(node.project)}
+                onClick={() => {
+                  setSelectedProject(node.project);
+                  // Show connections panel
+                  const conns: { nodeId: string; projectName: string; sharedItems: string[]; edgeType: 'tag' | 'dependency' }[] = [];
+                  for (const edge of edgesRef.current) {
+                    if (edge.source === node.id) {
+                      const targetP = projects.find(p => p.id === edge.target);
+                      if (targetP) conns.push({ nodeId: edge.target, projectName: targetP.name, sharedItems: edge.sharedItems || [], edgeType: edge.type });
+                    } else if (edge.target === node.id) {
+                      const sourceP = projects.find(p => p.id === edge.source);
+                      if (sourceP) conns.push({ nodeId: edge.source, projectName: sourceP.name, sharedItems: edge.sharedItems || [], edgeType: edge.type });
+                    }
+                  }
+                  setConnectionsPanel(conns.length > 0 ? { nodeId: node.id, connections: conns } : null);
+                }}
                 style={{ cursor: 'pointer', transition: 'opacity 0.3s' }}
                 opacity={opacity}
               >
@@ -932,7 +1107,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                   {node.project.name.length > 18 ? node.project.name.slice(0, 16) + '…' : node.project.name}
                 </text>
 
-                {/* Activity indicator */}
+                {/* Activity indicator (green dot for recent push) */}
                 {node.project.pushedAt && (Date.now() - new Date(node.project.pushedAt).getTime() < 7 * 24 * 60 * 60 * 1000) && (
                   <circle
                     cx={node.x + node.radius * 0.65}
@@ -944,6 +1119,54 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                     className="pointer-events-none"
                   />
                 )}
+
+                {/* Special badge icons at top-right of node */}
+                {(() => {
+                  const badges: { emoji: string; title: string }[] = [];
+                  const p = node.project;
+
+                  // 🦅 Phoenix/Firebird — flagship projects (≥5 stars)
+                  if (p.stargazersCount >= 5) badges.push({ emoji: '🦅', title: 'Flagship (≥5 stars)' });
+                  // 🔥 Hot — pushed in last 7 days
+                  if (p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() < 7 * 24 * 60 * 60 * 1000)) {
+                    badges.push({ emoji: '🔥', title: 'Hot (pushed this week)' });
+                  }
+                  // ⚡ High-activity — pushed in last 30 days with ≥3 stars
+                  if (p.pushedAt && (Date.now() - new Date(p.pushedAt).getTime() < 30 * 24 * 60 * 60 * 1000) && p.stargazersCount >= 3) {
+                    badges.push({ emoji: '⚡', title: 'High-activity' });
+                  }
+                  // 🌟 Most-starred — top 3 by stars
+                  const top3Starred = [...projects].sort((a, b) => b.stargazersCount - a.stargazersCount).slice(0, 3);
+                  if (top3Starred.some(s => s.id === p.id) && p.stargazersCount > 0) {
+                    badges.push({ emoji: '🌟', title: 'Most-starred' });
+                  }
+                  // 🛡️ Deep-analyzed
+                  if (isDeepAnalyzed) badges.push({ emoji: '🛡️', title: 'Deep-analyzed' });
+
+                  // Show up to 2 badges max, positioned at top-right
+                  return badges.slice(0, 2).map((badge, idx) => (
+                    <g key={`badge-${idx}`} className="pointer-events-none">
+                      <circle
+                        cx={node.x + node.radius * 0.5 + idx * 10}
+                        cy={node.y - node.radius * 0.7}
+                        r={5}
+                        fill="rgba(10,10,10,0.85)"
+                        stroke="rgba(255,255,255,0.1)"
+                        strokeWidth={0.5}
+                      />
+                      <text
+                        x={node.x + node.radius * 0.5 + idx * 10}
+                        y={node.y - node.radius * 0.7 + 1}
+                        textAnchor="middle"
+                        dominantBaseline="central"
+                        fontSize={7}
+                        className="select-none"
+                      >
+                        {badge.emoji}
+                      </text>
+                    </g>
+                  ));
+                })()}
               </g>
             );
           })}
@@ -1116,6 +1339,73 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
           ))}
         </g>
       </svg>
+
+      {/* Edge tooltip on hover */}
+      {hoveredEdgeInfo && (
+        <div
+          className="absolute z-30 pointer-events-none px-2.5 py-1.5 rounded-md text-[10px] shadow-lg border border-border/30"
+          style={{
+            left: hoveredEdgeInfo.x + 10,
+            top: hoveredEdgeInfo.y - 20,
+            background: 'rgba(10,10,10,0.92)',
+            color: '#e2e8f0',
+            maxWidth: 250,
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+          }}
+        >
+          {hoveredEdgeInfo.label}
+        </div>
+      )}
+
+      {/* Connections panel — shown when clicking a node with connections */}
+      {connectionsPanel && (
+        <div
+          className="absolute bottom-3 right-3 z-20 w-56 rounded-lg border border-border/20 shadow-xl overflow-hidden"
+          style={{ background: 'rgba(10,10,10,0.92)' }}
+        >
+          <div className="flex items-center justify-between px-3 py-2 border-b border-border/10">
+            <span className="text-[10px] font-semibold text-emerald-400 uppercase tracking-wider">
+              Connections ({connectionsPanel.connections.length})
+            </span>
+            <button
+              onClick={() => setConnectionsPanel(null)}
+              className="text-muted-foreground/40 hover:text-foreground/60 transition-colors"
+              title="Close connections panel"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
+            </button>
+          </div>
+          <div className="max-h-48 overflow-y-auto custom-scrollbar">
+            {connectionsPanel.connections.map((conn, i) => {
+              const isDep = conn.edgeType === 'dependency';
+              return (
+                <button
+                  key={i}
+                  onClick={() => {
+                    const p = projects.find(pr => pr.id === conn.nodeId);
+                    if (p) setSelectedProject(p);
+                    setConnectionsPanel(null);
+                  }}
+                  className="w-full text-left px-3 py-1.5 hover:bg-emerald-500/10 transition-colors flex items-center gap-2 group"
+                  title={`Click to view ${conn.projectName}`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${isDep ? 'bg-blue-400' : 'bg-emerald-400'}`}
+                  />
+                  <span className="text-[10px] text-foreground/70 group-hover:text-foreground truncate flex-1">
+                    {conn.projectName}
+                  </span>
+                  <span className="text-[8px] text-muted-foreground/30">
+                    {conn.sharedItems.length} shared
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Reset View button */}
       <button

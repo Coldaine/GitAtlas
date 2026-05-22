@@ -1,7 +1,7 @@
 'use client';
 
 import { useAtlasStore } from '@/lib/store';
-import { CATEGORY_COLORS, LANGUAGE_COLORS } from '@/lib/types';
+import { CATEGORY_COLORS, LANGUAGE_COLORS, Project } from '@/lib/types';
 import { ProjectGraph } from '@/components/project-graph';
 import { ProjectGrid } from '@/components/project-grid';
 import { TimelineView } from '@/components/timeline-view';
@@ -20,7 +20,12 @@ import { RecentCommitsFeed } from '@/components/recent-commits-feed';
 import { RelationshipMap } from '@/components/relationship-map';
 import { AIRecommendations } from '@/components/ai-recommendations';
 import { HealthDashboard } from '@/components/health-dashboard';
+import { SettingsDialog } from '@/components/settings-dialog';
+import { ConceptGroups, CONCEPT_GROUPS, getProjectsForGroup } from '@/components/concept-groups';
+import { AdvancedFilters, AdvancedFilterState, DEFAULT_FILTERS, applyAdvancedFilters } from '@/components/advanced-filters';
+import { ConceptDrilldown } from '@/components/concept-drilldown';
 import { Badge } from '@/components/ui/badge';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -35,7 +40,7 @@ import {
   Building2, BarChart3, RefreshCw, Microscope as DeepAnalyzeIcon,
   Download, Share2, Target, Bookmark as BookmarkIcon,
   Code2, Tag, GitCommit, Hash, Layers, Trophy,
-  PanelLeftClose, PanelLeft, Circle, GitBranch, Heart,
+  Circle, GitBranch, Heart, Settings,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
@@ -91,9 +96,15 @@ export function CockpitDashboard() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false);
   const [aiRecommendationsOpen, setAiRecommendationsOpen] = useState(false);
   const [rightPanelTab, setRightPanelTab] = useState<'activity' | 'commits'>('activity');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [activeConceptGroups, setActiveConceptGroups] = useState<string[]>([]);
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilterState>(DEFAULT_FILTERS);
+  const [drilldownOpen, setDrilldownOpen] = useState(false);
+  const [drilldownProjects, setDrilldownProjects] = useState<Project[]>([]);
+  const [drilldownTitle, setDrilldownTitle] = useState('');
+  const [drilldownIcon, setDrilldownIcon] = useState('');
 
   // Check if org repos are already loaded
   const hasOrgRepos = useMemo(() => projects.some(p => p.ownerType === 'Organization'), [projects]);
@@ -242,9 +253,9 @@ export function CockpitDashboard() {
     }
   }, [projects, activityFilter]);
 
-  // Filtered projects — include deep analysis data in search
+  // Filtered projects — include deep analysis data in search + concept groups + advanced filters
   const filteredProjects = useMemo(() => {
-    return projects.filter(p => {
+    let filtered = projects.filter(p => {
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const searchable = [
@@ -264,7 +275,22 @@ export function CockpitDashboard() {
       }
       return true;
     });
-  }, [projects, searchQuery, activeTags]);
+
+    // Apply concept group filtering
+    if (activeConceptGroups.length > 0) {
+      const conceptMatchIds = new Set<string>();
+      for (const groupKey of activeConceptGroups) {
+        const groupProjects = getProjectsForGroup(projects, groupKey);
+        groupProjects.forEach(p => conceptMatchIds.add(p.id));
+      }
+      filtered = filtered.filter(p => conceptMatchIds.has(p.id));
+    }
+
+    // Apply advanced filters
+    filtered = applyAdvancedFilters(filtered, advancedFilters);
+
+    return filtered;
+  }, [projects, searchQuery, activeTags, activeConceptGroups, advancedFilters]);
 
   // Refresh handler
   const handleRefresh = useCallback(async () => {
@@ -403,6 +429,39 @@ export function CockpitDashboard() {
     }
   }, [isLoadingOrgRepos, hasOrgRepos, username, setProjects]);
 
+  // Concept group toggle handler
+  const handleToggleConceptGroup = useCallback((groupKey: string) => {
+    setActiveConceptGroups(prev => {
+      const next = prev.includes(groupKey) ? prev.filter(k => k !== groupKey) : [...prev, groupKey];
+      return next;
+    });
+  }, []);
+
+  // Drill down handler
+  const handleDrillDown = useCallback((groupKey: string) => {
+    const groupProjects = getProjectsForGroup(projects, groupKey);
+    const group = CONCEPT_GROUPS.find(g => g.key === groupKey);
+    if (groupProjects.length === 0) return;
+    setDrilldownProjects(groupProjects);
+    setDrilldownTitle(groupKey);
+    setDrilldownIcon(group?.icon || '🔍');
+    setDrilldownOpen(true);
+  }, [projects]);
+
+  // Advanced filter count
+  const advancedFilterCount = useMemo(() => {
+    let count = 0;
+    if (advancedFilters.languages.length > 0) count++;
+    if (advancedFilters.categories.length > 0) count++;
+    if (advancedFilters.activityStatus.length > 0) count++;
+    if (advancedFilters.deepAnalysisStatus.length > 0) count++;
+    if (advancedFilters.frameworks.length > 0) count++;
+    if (advancedFilters.dependencySearch) count++;
+    const maxStars = Math.max(...projects.map(p => p.stargazersCount), 0);
+    if (advancedFilters.starRange[0] > 0 || advancedFilters.starRange[1] < maxStars) count++;
+    return count;
+  }, [advancedFilters, projects]);
+
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden page-load-animation">
       {/* Onboarding Tour */}
@@ -428,7 +487,7 @@ export function CockpitDashboard() {
           <button
             onClick={() => setCommandPaletteOpen(true)}
             className="ml-1 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground/30 border border-border/15 hover:border-border/30 hover:text-muted-foreground/50 transition-all cursor-pointer"
-            title="Command Palette (⌘K)"
+            title="✅ Functional: Command Palette (⌘K)"
           >
             ⌘K
           </button>
@@ -508,6 +567,9 @@ export function CockpitDashboard() {
           {/* Separator between stats and actions */}
           <div className="h-4 w-px bg-border/10" />
 
+          {/* Advanced Filters */}
+          <AdvancedFilters />
+
           {/* Smart search — tour target */}
           <div id="tour-smart-search">
             <Button
@@ -515,7 +577,7 @@ export function CockpitDashboard() {
               size="sm"
               onClick={() => setSmartSearchOpen(true)}
               className="h-7 gap-1 text-xs border-amber-500/30 text-amber-400 hover:bg-gradient-to-r hover:from-amber-500/10 hover:to-amber-600/5 hover:shadow-[0_0_10px_rgba(245,158,11,0.1)] hover:border-amber-500/50 transition-all px-2"
-              title="Smart Search: Ask if you already have a tool for X"
+              title="✅ Functional: Smart Search — Ask if you already have a tool for a specific purpose"
             >
               <Zap className="w-3 h-3" />Do I have...?
             </Button>
@@ -527,7 +589,7 @@ export function CockpitDashboard() {
             size="sm"
             onClick={() => setAiRecommendationsOpen(true)}
             className="h-7 gap-1 text-xs border-amber-500/30 text-amber-400 hover:bg-gradient-to-r hover:from-amber-500/10 hover:to-amber-600/5 hover:shadow-[0_0_10px_rgba(245,158,11,0.1)] hover:border-amber-500/50 transition-all px-2"
-            title="AI Recommendations — LLM-powered project suggestions"
+            title="⚠️ Partial: AI Recommendations — LLM-powered project suggestions (requires deep analysis data)"
           >
             <Sparkles className="w-3 h-3" />AI Suggestions
           </Button>
@@ -538,7 +600,7 @@ export function CockpitDashboard() {
             size="sm"
             onClick={() => setCompareOpen(true)}
             className="h-7 gap-1 text-xs border-cyan-500/30 text-cyan-400 hover:bg-gradient-to-r hover:from-cyan-500/10 hover:to-cyan-600/5 hover:shadow-[0_0_10px_rgba(6,182,212,0.1)] hover:border-cyan-500/50 transition-all px-2"
-            title="Compare two projects side-by-side"
+            title="✅ Functional: Compare any two projects side-by-side"
           >
             <GitCompare className="w-3 h-3" />Compare
           </Button>
@@ -549,7 +611,7 @@ export function CockpitDashboard() {
             size="sm"
             onClick={() => setExportOpen(true)}
             className="h-7 gap-1 text-xs border-emerald-500/30 text-emerald-400 hover:bg-gradient-to-r hover:from-emerald-500/10 hover:to-emerald-600/5 hover:shadow-[0_0_10px_rgba(16,185,129,0.1)] hover:border-emerald-500/50 transition-all px-2"
-            title="Export portfolio as Markdown or JSON"
+            title="✅ Functional: Export your portfolio as Markdown or JSON"
           >
             <Download className="w-3 h-3" />Export
           </Button>
@@ -562,7 +624,7 @@ export function CockpitDashboard() {
               onClick={handleFetchOrgRepos}
               disabled={isLoadingOrgRepos}
               className="h-7 gap-1 text-xs border-orange-500/30 text-orange-400 hover:bg-gradient-to-r hover:from-orange-500/10 hover:to-orange-600/5 hover:shadow-[0_0_10px_rgba(249,115,22,0.1)] hover:border-orange-500/50 transition-all px-2"
-              title="Load ProjectBroadside organization repos"
+              title="✅ Functional: Load ProjectBroadside organization repos"
             >
               {isLoadingOrgRepos ? (
                 <><Loader2 className="w-3 h-3 animate-spin" /> Loading...</>
@@ -580,7 +642,7 @@ export function CockpitDashboard() {
               onClick={handleDeepAnalyzeAll}
               disabled={isDeepAnalyzing}
               className={`h-7 gap-1 text-xs border-emerald-500/30 text-emerald-400 hover:bg-gradient-to-r hover:from-emerald-500/10 hover:to-emerald-600/5 hover:shadow-[0_0_10px_rgba(16,185,129,0.1)] hover:border-emerald-500/50 transition-all px-2 ${hasUnanalyzedRepos && !isDeepAnalyzing ? 'shimmer-button' : ''}`}
-              title="Deep analyze all repos with AI"
+              title="✅ Functional: Deep analyze all repos with AI — reads source code"
             >
               {isDeepAnalyzing ? (
                 <><Loader2 className="w-3 h-3 animate-spin" /> Analyzing...</>
@@ -597,7 +659,7 @@ export function CockpitDashboard() {
             onClick={handleBatchRewriteReadmes}
             disabled={isRewritingReadmes || isDeepAnalyzing}
             className="h-7 gap-1 text-xs border-violet-500/30 text-violet-400 hover:bg-gradient-to-r hover:from-violet-500/10 hover:to-violet-600/5 hover:shadow-[0_0_10px_rgba(139,92,246,0.1)] hover:border-violet-500/50 transition-all px-2"
-            title="Generate AI READMEs for all deep-analyzed repos"
+            title="✅ Functional: Rewrite READMEs — Generate AI READMEs based on deep analysis"
           >
             {isRewritingReadmes ? (
               <><Loader2 className="w-3 h-3 animate-spin" /> {readmeProgress}</>
@@ -605,6 +667,15 @@ export function CockpitDashboard() {
               <><FileText className="w-3 h-3" /> Rewrite READMEs</>
             )}
           </Button>
+
+          {/* Settings */}
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className="h-7 w-7 flex items-center justify-center text-muted-foreground/40 hover:text-foreground/60 rounded transition-colors"
+            title="✅ Functional: Settings"
+          >
+            <Settings className="w-3.5 h-3.5" />
+          </button>
 
           {/* Keyboard help */}
           <button
@@ -620,63 +691,63 @@ export function CockpitDashboard() {
             <button
               onClick={() => setViewMode('graph')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'graph' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Graph View (⌘1)"
+              title="✅ Functional: Graph View (⌘1)"
             >
               <Network className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('grid')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'grid' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Grid View (⌘2)"
+              title="✅ Functional: Grid View (⌘2)"
             >
               <LayoutGrid className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('timeline')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'timeline' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Timeline View (⌘3)"
+              title="✅ Functional: Timeline View (⌘3)"
             >
               <Calendar className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('stats')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'stats' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Stats Overview (⌘4)"
+              title="✅ Functional: Stats Overview (⌘4)"
             >
               <BarChart3 className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('network')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'network' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Dependency Network (⌘5)"
+              title="✅ Functional: Dependency Network (⌘5)"
             >
               <Share2 className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('radar')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'radar' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Tech Radar (⌘6)"
+              title="✅ Functional: Tech Radar (⌘6)"
             >
               <Target className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('bookmarks')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'bookmarks' ? 'bg-amber-600/20 text-amber-400' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Bookmarks (⌘7)"
+              title="✅ Functional: Bookmarks (⌘7)"
             >
               <BookmarkIcon className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('relationships')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'relationships' ? 'bg-emerald-600/20 text-emerald-400' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Relationship Map (⌘8)"
+              title="✅ Functional: Relationship Map (⌘8)"
             >
               <GitBranch className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => setViewMode('health')}
               className={`p-1 rounded text-xs flex items-center gap-1 ${viewMode === 'health' ? 'bg-rose-600/20 text-rose-400' : 'text-muted-foreground hover:text-foreground'}`}
-              title="Health Dashboard (⌘9)"
+              title="✅ Functional: Health Dashboard (⌘9)"
             >
               <Heart className="w-3.5 h-3.5" />
             </button>
@@ -687,7 +758,7 @@ export function CockpitDashboard() {
             size="sm"
             onClick={() => setShowDetailGrid(!showDetailGrid)}
             className={`h-7 gap-1 text-xs ${showDetailGrid ? 'text-emerald-400' : 'text-muted-foreground'}`}
-            title="Toggle card strip at bottom"
+            title="✅ Functional: Show/Hide card strip at bottom"
           >
             <LayoutGrid className="w-3.5 h-3.5" />
             {showDetailGrid ? 'Hide' : 'Show'} Cards
@@ -698,32 +769,13 @@ export function CockpitDashboard() {
       <div className="h-px w-full bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent" />
 
       {/* Main cockpit: left panels + center graph + right feed */}
-      <div className="flex-1 flex overflow-hidden">
+      <ResizablePanelGroup direction="horizontal" className="flex-1 overflow-hidden">
         {/* LEFT PANEL — Charts & Tags */}
-        <div className={`shrink-0 border-r border-border/15 bg-card/10 flex flex-col overflow-hidden relative transition-all duration-300 ${leftPanelCollapsed ? 'w-8' : 'w-64'}`}>
+        <ResizablePanel defaultSize={18} minSize={12} maxSize={30} className="bg-card/10 flex flex-col overflow-hidden relative">
           {/* Animated gradient border on left edge */}
-          <div className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-emerald-500/40 via-teal-400/20 to-emerald-500/40 left-panel-border" />
+          <div className="absolute left-0 top-0 bottom-0 w-px bg-gradient-to-b from-emerald-500/40 via-teal-400/20 to-emerald-500/40 z-10" />
 
-          {/* Collapse button */}
-          <button
-            onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
-            className="absolute top-2 right-1 z-10 p-1 rounded text-muted-foreground/30 hover:text-foreground/60 hover:bg-card/40 transition-all"
-            title={leftPanelCollapsed ? 'Expand panel' : 'Collapse panel'}
-          >
-            {leftPanelCollapsed ? <PanelLeft className="w-3 h-3" /> : <PanelLeftClose className="w-3 h-3" />}
-          </button>
-
-          <AnimatePresence mode="wait">
-            {!leftPanelCollapsed && (
-              <motion.div
-                key="left-panel-content"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-                className="flex-1 overflow-hidden"
-              >
-                <ScrollArea className="flex-1 h-full">
+          <ScrollArea className="flex-1 h-full">
                   <div className="p-3 space-y-4">
 
                     {/* Language donut */}
@@ -838,6 +890,12 @@ export function CockpitDashboard() {
                     {/* Section divider */}
                     <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
 
+                    {/* Concept Groups */}
+                    <ConceptGroups />
+
+                    {/* Section divider */}
+                    <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
+
                     {/* Tag cloud */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -901,13 +959,11 @@ export function CockpitDashboard() {
                     </div>
                   </div>
                 </ScrollArea>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+        </ResizablePanel>
+        <ResizableHandle withHandle className="bg-border/15 hover:bg-emerald-500/20 data-[resize-handle-active]:bg-emerald-500/30 transition-colors" />
 
         {/* CENTER — Main visualization */}
-        <div className="flex-1 overflow-hidden relative" id="tour-graph-area">
+        <ResizablePanel defaultSize={58} minSize={40} className="overflow-hidden relative" id="tour-graph-area">
           <AnimatePresence mode="wait">
             {isLoading ? (
               <motion.div
@@ -1122,10 +1178,11 @@ export function CockpitDashboard() {
               )}
             </div>
           )}
-        </div>
+        </ResizablePanel>
+        <ResizableHandle withHandle className="bg-border/15 hover:bg-emerald-500/20 data-[resize-handle-active]:bg-emerald-500/30 transition-colors" />
 
         {/* RIGHT PANEL — Activity feed + Insights */}
-        <div className="w-60 shrink-0 border-l border-border/15 bg-card/10 flex flex-col overflow-hidden relative">
+        <ResizablePanel defaultSize={24} minSize={15} maxSize={35} className="bg-card/10 flex flex-col overflow-hidden relative">
           {/* Aurora gradient at top of right panel */}
           <div
             className="absolute top-0 left-0 right-0 h-8 pointer-events-none z-10"
@@ -1161,7 +1218,7 @@ export function CockpitDashboard() {
               <button
                 onClick={handleRefresh}
                 className="text-muted-foreground/30 hover:text-foreground/60 transition-colors"
-                title="Refresh project data"
+                title="✅ Functional: Refresh project data"
               >
                 <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin' : ''}`} />
               </button>
@@ -1372,8 +1429,8 @@ export function CockpitDashboard() {
               );
             })}
           </div>
-        </div>
-      </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
 
       {/* Bottom card strip (togglable) */}
       <AnimatePresence>
@@ -1450,6 +1507,9 @@ export function CockpitDashboard() {
 
       {/* Export dialog */}
       <ExportDialog open={exportOpen} onOpenChange={setExportOpen} />
+
+      {/* Settings dialog */}
+      <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
 
       {/* AI Recommendations */}
       <AIRecommendations
