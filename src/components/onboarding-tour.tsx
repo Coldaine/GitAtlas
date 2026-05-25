@@ -134,6 +134,7 @@ export function OnboardingTour() {
           exit={{ opacity: 0 }}
           transition={{ duration: 0.3 }}
           className="fixed inset-0 z-[100] pointer-events-none"
+          onClick={(e) => { if (e.target === e.currentTarget) handleSkip(); }}
         >
           {/* Dark overlay */}
           <svg className="absolute inset-0 w-full h-full">
@@ -193,7 +194,8 @@ export function OnboardingTour() {
                   : 'translateY(-50%)',
             }}
           >
-            <div className="bg-card/95 backdrop-blur-md border border-emerald-500/20 rounded-lg p-4 shadow-xl max-w-xs">
+            <div
+              className="bg-card/95 backdrop-blur-md border border-emerald-500/20 rounded-lg p-4 shadow-xl max-w-xs pointer-events-auto">
               <div className="flex items-center justify-between mb-2">
                 <h3 className="text-sm font-bold text-foreground/90">{step.title}</h3>
                 <button

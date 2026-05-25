@@ -11,11 +11,12 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Settings, Palette, Database, Info, ChevronRight,
-  Monitor, Network, HardDrive, Zap,
+  Monitor, Network, HardDrive, Zap, Sparkles,
 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 import { useState } from 'react';
 
-type SettingsTab = 'general' | 'graph' | 'ingestion' | 'data' | 'about';
+type SettingsTab = 'general' | 'graph' | 'semantics' | 'ingestion' | 'data' | 'about';
 
 // Mocked setting indicator component
 function MockedBadge({ tooltip }: { tooltip: string }) {
@@ -64,6 +65,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const tabs: { id: SettingsTab; label: string; icon: React.ReactNode }[] = [
     { id: 'general', label: 'General', icon: <Monitor className="w-3.5 h-3.5" /> },
     { id: 'graph', label: 'Graph', icon: <Network className="w-3.5 h-3.5" /> },
+    { id: 'semantics', label: 'Semantics', icon: <Palette className="w-3.5 h-3.5" /> },
     { id: 'ingestion', label: 'Ingestion', icon: <Database className="w-3.5 h-3.5" /> },
     { id: 'data', label: 'Data', icon: <HardDrive className="w-3.5 h-3.5" /> },
     { id: 'about', label: 'About', icon: <Info className="w-3.5 h-3.5" /> },
@@ -390,6 +392,227 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                 </>
               )}
 
+              {/* === SEMANTICS TAB === */}
+              {activeTab === 'semantics' && (
+                <>
+                  <div className="px-3 py-2 rounded-md bg-emerald-500/5 border border-emerald-500/15 text-[10px] text-emerald-400/70 mb-3">
+                    <Sparkles className="w-3 h-3 inline mr-1" />
+                    This reference guide explains the visual language used across all graph views.
+                  </div>
+
+                  {/* Node Sizes */}
+                  <div>
+                    <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">Node Sizes</h3>
+                    <div className="space-y-2.5">
+                      <div className="flex items-start gap-3 px-3 py-2 rounded-md bg-card/30">
+                        <div className="flex items-end gap-1 shrink-0 mt-0.5">
+                          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400/60" />
+                          <div className="w-4 h-4 rounded-full bg-emerald-400/70" />
+                          <div className="w-5.5 h-5.5 rounded-full bg-emerald-400/80" style={{ width: 22, height: 22 }} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-foreground/80 font-medium">Default — Stars + Activity</p>
+                          <p className="text-[9px] text-muted-foreground/50">Combined score from star count and recent push activity</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 px-3 py-2 rounded-md bg-card/30">
+                        <div className="flex items-end gap-1 shrink-0 mt-0.5">
+                          <div className="w-2 h-2 rounded-full bg-yellow-400/50" />
+                          <div className="w-3.5 h-3.5 rounded-full bg-yellow-400/60" />
+                          <div className="w-5 h-5 rounded-full bg-yellow-400/70" style={{ width: 20, height: 20 }} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-foreground/80 font-medium">Stars Mode</p>
+                          <p className="text-[9px] text-muted-foreground/50">More stars = bigger node</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 px-3 py-2 rounded-md bg-card/30">
+                        <div className="flex items-end gap-1 shrink-0 mt-0.5">
+                          <div className="w-2 h-2 rounded-full bg-green-400/50" />
+                          <div className="w-3.5 h-3.5 rounded-full bg-green-400/60" />
+                          <div className="w-5 h-5 rounded-full bg-green-400/70" style={{ width: 20, height: 20 }} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-foreground/80 font-medium">Activity Mode</p>
+                          <p className="text-[9px] text-muted-foreground/50">Recently pushed = bigger node</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 px-3 py-2 rounded-md bg-card/30">
+                        <div className="flex items-end gap-1 shrink-0 mt-0.5">
+                          <div className="w-2 h-2 rounded-full bg-purple-400/50" />
+                          <div className="w-3.5 h-3.5 rounded-full bg-purple-400/60" />
+                          <div className="w-5 h-5 rounded-full bg-purple-400/70" style={{ width: 20, height: 20 }} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-foreground/80 font-medium">Dependencies Mode</p>
+                          <p className="text-[9px] text-muted-foreground/50">More dependencies = bigger node</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 px-3 py-2 rounded-md bg-card/30">
+                        <div className="flex items-end gap-1 shrink-0 mt-0.5">
+                          <div className="w-2 h-2 rounded-full bg-orange-400/50" />
+                          <div className="w-3.5 h-3.5 rounded-full bg-orange-400/60" />
+                          <div className="w-5 h-5 rounded-full bg-orange-400/70" style={{ width: 20, height: 20 }} />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-foreground/80 font-medium">Files Mode</p>
+                          <p className="text-[9px] text-muted-foreground/50">More files = bigger node</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
+
+                  {/* Node Colors */}
+                  <div>
+                    <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">Node Colors</h3>
+                    <div className="space-y-2.5">
+                      <div className="px-3 py-2 rounded-md bg-card/30">
+                        <p className="text-[10px] text-foreground/80 font-medium mb-2">Category Mode — Each category gets its own color</p>
+                        <div className="flex flex-wrap gap-2">
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#10b981' }} /><span className="text-[9px] text-muted-foreground/50">tool</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f59e0b' }} /><span className="text-[9px] text-muted-foreground/50">library</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#ef4444' }} /><span className="text-[9px] text-muted-foreground/50">application</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#8b5cf6' }} /><span className="text-[9px] text-muted-foreground/50">template</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#ec4899' }} /><span className="text-[9px] text-muted-foreground/50">experiment</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#6366f1' }} /><span className="text-[9px] text-muted-foreground/50">config</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#14b8a6' }} /><span className="text-[9px] text-muted-foreground/50">documentation</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f97316' }} /><span className="text-[9px] text-muted-foreground/50">learning</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#64748b' }} /><span className="text-[9px] text-muted-foreground/50">archive</span></div>
+                        </div>
+                      </div>
+                      <div className="px-3 py-2 rounded-md bg-card/30">
+                        <p className="text-[10px] text-foreground/80 font-medium mb-2">Language Mode — Colored by primary language</p>
+                        <div className="flex flex-wrap gap-2">
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#3178c6' }} /><span className="text-[9px] text-muted-foreground/50">TypeScript</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#f1e05a' }} /><span className="text-[9px] text-muted-foreground/50">JavaScript</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#3572A5' }} /><span className="text-[9px] text-muted-foreground/50">Python</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#dea584' }} /><span className="text-[9px] text-muted-foreground/50">Rust</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#00ADD8' }} /><span className="text-[9px] text-muted-foreground/50">Go</span></div>
+                        </div>
+                      </div>
+                      <div className="px-3 py-2 rounded-md bg-card/30">
+                        <p className="text-[10px] text-foreground/80 font-medium mb-2">Health Mode — Green / Yellow / Red</p>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-green-500" /><span className="text-[9px] text-muted-foreground/50">Healthy</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-yellow-500" /><span className="text-[9px] text-muted-foreground/50">Moderate</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-red-500" /><span className="text-[9px] text-muted-foreground/50">Stale</span></div>
+                        </div>
+                      </div>
+                      <div className="px-3 py-2 rounded-md bg-card/30">
+                        <p className="text-[10px] text-foreground/80 font-medium mb-2">Activity Mode — Green / Yellow / Gray</p>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-green-500" /><span className="text-[9px] text-muted-foreground/50">Recent (&lt;30d)</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-yellow-500" /><span className="text-[9px] text-muted-foreground/50">30–180 days</span></div>
+                          <div className="flex items-center gap-1"><div className="w-2.5 h-2.5 rounded-full bg-gray-500" /><span className="text-[9px] text-muted-foreground/50">Stale</span></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
+
+                  {/* Edge Types */}
+                  <div>
+                    <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">Edge Types</h3>
+                    <div className="space-y-2.5">
+                      <div className="px-3 py-2 rounded-md bg-card/30 flex items-start gap-3">
+                        <svg width="60" height="20" className="shrink-0 mt-0.5">
+                          <line x1="0" y1="10" x2="60" y2="10" stroke="white" strokeWidth="1.5" opacity="0.5" />
+                        </svg>
+                        <div>
+                          <p className="text-[10px] text-foreground/80 font-medium">Tag Edges</p>
+                          <p className="text-[9px] text-muted-foreground/50">Solid lines between projects sharing tags/topics (white/gray)</p>
+                        </div>
+                      </div>
+                      <div className="px-3 py-2 rounded-md bg-card/30 flex items-start gap-3">
+                        <svg width="60" height="20" className="shrink-0 mt-0.5">
+                          <line x1="0" y1="10" x2="60" y2="10" stroke="#60a5fa" strokeWidth="1.5" strokeDasharray="4 3" opacity="0.7" />
+                        </svg>
+                        <div>
+                          <p className="text-[10px] text-foreground/80 font-medium">Dependency Edges</p>
+                          <p className="text-[9px] text-muted-foreground/50">Dashed blue lines between projects sharing dependencies</p>
+                        </div>
+                      </div>
+                      <div className="px-3 py-2 rounded-md bg-card/30">
+                        <p className="text-[10px] text-foreground/80 font-medium mb-2">Edge Thickness</p>
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1.5">
+                            <svg width="30" height="10"><line x1="0" y1="5" x2="30" y2="5" stroke="white" strokeWidth="1" opacity="0.4" /></svg>
+                            <span className="text-[9px] text-muted-foreground/50">1 shared</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <svg width="30" height="10"><line x1="0" y1="5" x2="30" y2="5" stroke="white" strokeWidth="2" opacity="0.5" /></svg>
+                            <span className="text-[9px] text-muted-foreground/50">3 shared</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <svg width="30" height="10"><line x1="0" y1="5" x2="30" y2="5" stroke="white" strokeWidth="3" opacity="0.6" /></svg>
+                            <span className="text-[9px] text-muted-foreground/50">5+ shared</span>
+                          </div>
+                        </div>
+                        <p className="text-[9px] text-muted-foreground/40 mt-1">Thickness = number of shared items between nodes</p>
+                      </div>
+                      <div className="px-3 py-2 rounded-md bg-card/30 flex items-start gap-3">
+                        <svg width="60" height="20" className="shrink-0 mt-0.5">
+                          <line x1="0" y1="10" x2="60" y2="10" stroke="white" strokeWidth="1.5" opacity="0.4" />
+                          <circle cx="30" cy="10" r="6" fill="#1e1e2e" stroke="white" strokeWidth="0.5" opacity="0.6" />
+                          <text x="30" y="13" textAnchor="middle" fill="white" fontSize="7" opacity="0.7">3</text>
+                        </svg>
+                        <div>
+                          <p className="text-[10px] text-foreground/80 font-medium">Count Badges</p>
+                          <p className="text-[9px] text-muted-foreground/50">Appear at edge midpoints on hover showing shared item count</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
+
+                  {/* Special Indicators */}
+                  <div>
+                    <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">Special Indicators</h3>
+                    <div className="space-y-2.5">
+                      <div className="px-3 py-2 rounded-md bg-card/30 flex items-start gap-3">
+                        <div className="shrink-0 mt-0.5 relative" style={{ width: 28, height: 28 }}>
+                          <div className="absolute inset-0 rounded-full border-2 border-emerald-400 opacity-80" />
+                          <div className="absolute inset-1.5 rounded-full bg-emerald-400/30" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-foreground/80 font-medium">Emerald Ring — Deep-Analyzed</p>
+                          <p className="text-[9px] text-muted-foreground/50">Projects that have undergone deep AI analysis</p>
+                        </div>
+                      </div>
+                      <div className="px-3 py-2 rounded-md bg-card/30 flex items-start gap-3">
+                        <div className="shrink-0 mt-0.5 relative" style={{ width: 28, height: 28 }}>
+                          <svg width="28" height="28" viewBox="0 0 28 28">
+                            <circle cx="14" cy="14" r="10" fill="#1e1e2e" />
+                            <path d="M 14 4 A 10 10 0 0 1 24 14" fill="none" stroke="#22c55e" strokeWidth="2.5" strokeLinecap="round" />
+                            <path d="M 24 14 A 10 10 0 0 1 14 24" fill="none" stroke="#eab308" strokeWidth="2.5" strokeLinecap="round" />
+                            <path d="M 14 24 A 10 10 0 0 1 4 14" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" />
+                          </svg>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-foreground/80 font-medium">Health Ring — Project Health Score</p>
+                          <p className="text-[9px] text-muted-foreground/50">Colored arc showing project health: green → yellow → red</p>
+                        </div>
+                      </div>
+                      <div className="px-3 py-2 rounded-md bg-card/30 flex items-start gap-3">
+                        <div className="shrink-0 mt-0.5 relative" style={{ width: 28, height: 28 }}>
+                          <div className="absolute inset-0 rounded-full bg-emerald-400/10" style={{ filter: 'blur(3px)' }} />
+                          <div className="absolute inset-2 rounded-full bg-emerald-400/20" style={{ filter: 'blur(2px)' }} />
+                          <div className="absolute inset-3 rounded-full bg-emerald-400/40" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-foreground/80 font-medium">Hub Glow — Highly Connected</p>
+                          <p className="text-[9px] text-muted-foreground/50">Glowing aura on nodes with 4+ connections</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
               {/* === INGESTION TAB === */}
               {activeTab === 'ingestion' && (
                 <>
@@ -541,6 +764,164 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
                           <MockedBadge tooltip="Cache TTL controls how long fetched data is cached before refresh" />
                         </div>
                         {/* MOCKED: Cache TTL — Not yet functional */}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="h-px bg-gradient-to-r from-transparent via-border/20 to-transparent" />
+
+                  <div>
+                    <h3 className="text-xs font-medium text-muted-foreground/70 uppercase tracking-wider mb-3">Advanced Ingestion</h3>
+
+                    <div className="space-y-4">
+                      {/* Webhook URL — MOCKED */}
+                      <div className="opacity-50">
+                        <label className="text-xs text-foreground/80">Webhook URL</label>
+                        <p className="text-[10px] text-muted-foreground/50 mb-1">GitHub webhook for real-time updates</p>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            disabled
+                            type="text"
+                            value="https://api.github.com/webhooks/..."
+                            className="h-7 text-xs bg-card/30 border-border/20"
+                          />
+                          <MockedBadge tooltip="Webhook URL will enable real-time push notifications from GitHub" />
+                        </div>
+                        {/* MOCKED: Webhook URL — Not yet functional */}
+                      </div>
+
+                      {/* Rate Limit Mode — MOCKED */}
+                      <div className="flex items-center justify-between opacity-50">
+                        <div>
+                          <label className="text-xs text-foreground/80">Rate Limit Mode</label>
+                          <p className="text-[10px] text-muted-foreground/50">API request throttling strategy</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select disabled className="h-7 px-2 text-xs bg-card/30 border border-border/20 rounded-md text-muted-foreground/40 cursor-not-allowed">
+                            <option>Conservative</option>
+                            <option>Standard</option>
+                            <option>Aggressive</option>
+                          </select>
+                          <MockedBadge tooltip="Rate limit mode controls how aggressively the GitHub API is called" />
+                        </div>
+                        {/* MOCKED: Rate limit mode — Not yet functional */}
+                      </div>
+
+                      {/* Exclude Patterns — MOCKED */}
+                      <div className="opacity-50">
+                        <label className="text-xs text-foreground/80">Exclude Patterns</label>
+                        <p className="text-[10px] text-muted-foreground/50 mb-1">Glob patterns to exclude repos (e.g., "test-*, dotfiles")</p>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            disabled
+                            type="text"
+                            value="test-*, dotfiles"
+                            className="h-7 text-xs bg-card/30 border-border/20"
+                          />
+                          <MockedBadge tooltip="Exclude patterns will filter out repos matching glob patterns" />
+                        </div>
+                        {/* MOCKED: Exclude patterns — Not yet functional */}
+                      </div>
+
+                      {/* Include Forks — MOCKED */}
+                      <div className="flex items-center justify-between opacity-50">
+                        <div>
+                          <label className="text-xs text-foreground/80">Include Forks</label>
+                          <p className="text-[10px] text-muted-foreground/50">Also analyze forked repositories</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Switch disabled checked={false} />
+                          <MockedBadge tooltip="Include forks will allow analysis of forked repositories" />
+                        </div>
+                        {/* MOCKED: Include forks toggle — Not yet functional */}
+                      </div>
+
+                      {/* LLM Model — MOCKED */}
+                      <div className="flex items-center justify-between opacity-50">
+                        <div>
+                          <label className="text-xs text-foreground/80">LLM Model</label>
+                          <p className="text-[10px] text-muted-foreground/50">Model used for deep analysis</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select disabled className="h-7 px-2 text-xs bg-card/30 border border-border/20 rounded-md text-muted-foreground/40 cursor-not-allowed">
+                            <option>gpt-4o</option>
+                            <option>claude-3.5-sonnet</option>
+                            <option>custom</option>
+                          </select>
+                          <MockedBadge tooltip="LLM model selection will allow choosing which AI model powers analysis" />
+                        </div>
+                        {/* MOCKED: LLM model selection — Not yet functional */}
+                      </div>
+
+                      {/* Analysis Concurrency — MOCKED */}
+                      <div className="opacity-50">
+                        <div className="flex items-center justify-between mb-1">
+                          <div>
+                            <label className="text-xs text-foreground/80">Analysis Concurrency</label>
+                            <p className="text-[10px] text-muted-foreground/50">Parallel repo analysis limit</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground/40 font-mono">2</span>
+                            <MockedBadge tooltip="Concurrency controls how many repos are analyzed simultaneously" />
+                          </div>
+                        </div>
+                        {/* MOCKED: Analysis concurrency slider — Not yet functional */}
+                        <Slider
+                          disabled
+                          value={[2]}
+                          min={1}
+                          max={5}
+                          step={1}
+                          className="w-full opacity-50"
+                        />
+                      </div>
+
+                      {/* Custom Tags — MOCKED */}
+                      <div className="opacity-50">
+                        <label className="text-xs text-foreground/80">Custom Tags</label>
+                        <p className="text-[10px] text-muted-foreground/50 mb-1">User-defined tag categories (comma-separated)</p>
+                        <div className="flex items-center gap-2">
+                          <Input
+                            disabled
+                            type="text"
+                            value="internal, prototype, deprecated"
+                            className="h-7 text-xs bg-card/30 border-border/20"
+                          />
+                          <MockedBadge tooltip="Custom tags will let you define your own tag categories for projects" />
+                        </div>
+                        {/* MOCKED: Custom tags — Not yet functional */}
+                      </div>
+
+                      {/* Auto-tag Rules — MOCKED */}
+                      <div className="opacity-50">
+                        <label className="text-xs text-foreground/80">Auto-tag Rules</label>
+                        <p className="text-[10px] text-muted-foreground/50 mb-1">Rules for automatic tagging (e.g., "if framework:nextjs → tag:web-app")</p>
+                        <div className="flex items-start gap-2">
+                          <Textarea
+                            disabled
+                            value={"if framework:nextjs → tag:web-app\nif language:rust → tag:systems\nif stars >= 10 → tag:popular"}
+                            className="h-16 text-xs bg-card/30 border-border/20 resize-none"
+                          />
+                          <MockedBadge tooltip="Auto-tag rules will automatically assign tags based on project properties" />
+                        </div>
+                        {/* MOCKED: Auto-tag rules — Not yet functional */}
+                      </div>
+
+                      {/* Export Schedule — MOCKED */}
+                      <div className="flex items-center justify-between opacity-50">
+                        <div>
+                          <label className="text-xs text-foreground/80">Export Schedule</label>
+                          <p className="text-[10px] text-muted-foreground/50">Auto-export analysis results</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select disabled className="h-7 px-2 text-xs bg-card/30 border border-border/20 rounded-md text-muted-foreground/40 cursor-not-allowed">
+                            <option>Never</option>
+                            <option>Daily</option>
+                            <option>Weekly</option>
+                          </select>
+                          <MockedBadge tooltip="Export schedule will auto-export analysis data at specified intervals" />
+                        </div>
+                        {/* MOCKED: Export schedule — Not yet functional */}
                       </div>
                     </div>
                   </div>

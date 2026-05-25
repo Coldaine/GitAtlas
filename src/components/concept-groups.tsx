@@ -12,7 +12,7 @@ interface ConceptGroup {
   label: string;
   description: string;
   keywords: string[];
-  special?: 'phoenix'; // Special computed groups
+  special?: 'phoenix' | 'firebird' | 'rising-star' | 'power-couple' | 'lone-wolf' | 'ecosystem'; // Special computed groups
 }
 
 const CONCEPT_GROUPS: ConceptGroup[] = [
@@ -80,6 +80,46 @@ const CONCEPT_GROUPS: ConceptGroup[] = [
     keywords: [],
     special: 'phoenix',
   },
+  {
+    id: 'firebird',
+    icon: '🔥🦅',
+    label: 'Firebird Projects',
+    description: 'Hot projects that rose from the ashes — archived then reactivated or recently updated after long dormancy',
+    keywords: [],
+    special: 'firebird',
+  },
+  {
+    id: 'rising-star',
+    icon: '⭐📈',
+    label: 'Rising Stars',
+    description: 'Gaining traction — recently created with active development',
+    keywords: [],
+    special: 'rising-star',
+  },
+  {
+    id: 'power-couple',
+    icon: '🤝💎',
+    label: 'Power Couples',
+    description: 'Projects that share the most dependencies with each other',
+    keywords: [],
+    special: 'power-couple',
+  },
+  {
+    id: 'lone-wolf',
+    icon: '🐺',
+    label: 'Lone Wolves',
+    description: 'Standalone projects with no shared dependencies or tags',
+    keywords: [],
+    special: 'lone-wolf',
+  },
+  {
+    id: 'ecosystem',
+    icon: '🌿🌐',
+    label: 'Ecosystem Hubs',
+    description: 'Projects that connect the most other projects together',
+    keywords: [],
+    special: 'ecosystem',
+  },
 ];
 
 function matchesConceptGroup(project: Project, group: ConceptGroup): boolean {
@@ -90,6 +130,45 @@ function matchesConceptGroup(project: Project, group: ConceptGroup): boolean {
       ? (Date.now() - new Date(project.pushedAt).getTime() < 7 * 24 * 60 * 60 * 1000) && project.stargazersCount >= 1
       : false;
     return hasStars || recentlyActive;
+  }
+
+  // Firebird: Was archived OR had no push for 6+ months, then got a push in the last 30 days
+  if (group.special === 'firebird') {
+    if (!project.pushedAt) return false;
+    const daysSincePush = (Date.now() - new Date(project.pushedAt).getTime()) / (1000 * 60 * 60 * 24);
+    const recentlyPushed = daysSincePush < 30;
+    const wasDormant = project.isArchived || (project.githubCreatedAt && (Date.now() - new Date(project.githubCreatedAt).getTime() > 180 * 24 * 60 * 60 * 1000));
+    return recentlyPushed && wasDormant;
+  }
+
+  // Rising Star: Created in last 90 days with pushes in last 30 days
+  if (group.special === 'rising-star') {
+    if (!project.pushedAt || !project.githubCreatedAt) return false;
+    const daysSinceCreation = (Date.now() - new Date(project.githubCreatedAt).getTime()) / (1000 * 60 * 60 * 24);
+    const daysSincePush = (Date.now() - new Date(project.pushedAt).getTime()) / (1000 * 60 * 60 * 24);
+    return daysSinceCreation < 90 && daysSincePush < 30;
+  }
+
+  // Power Couple: Heuristic — projects with many shared deps and high star count
+  if (group.special === 'power-couple') {
+    const runtimeDeps = project.dependencies?.runtime?.length || 0;
+    const devDeps = project.dependencies?.dev?.length || 0;
+    const hasManySharedDeps = (runtimeDeps + devDeps) >= 4;
+    const hasPartners = project.similarProjects && project.similarProjects.length >= 2;
+    return hasManySharedDeps || !!hasPartners;
+  }
+
+  // Lone Wolf: No shared tags/deps with other projects (few edges)
+  if (group.special === 'lone-wolf') {
+    // Use a simple heuristic: projects with 0 stars, no deep analysis deps, and generic tags
+    const hasDeps = project.dependencies && ((project.dependencies.runtime?.length || 0) + (project.dependencies.dev?.length || 0)) > 0;
+    const hasSpecificTags = project.tags.some(t => !['tool', 'library', 'application', 'experiment'].includes(t));
+    return !hasDeps && !hasSpecificTags;
+  }
+
+  // Ecosystem Hub: Projects with many connections
+  if (group.special === 'ecosystem') {
+    return (project.dependencies?.runtime?.length || 0) >= 5 || project.stargazersCount >= 3;
   }
 
   const searchText = [

@@ -987,3 +987,176 @@ Stage Summary:
 - **9 view modes** now available: graph, grid, timeline, stats, network, radar, bookmarks, relationships, health
 - **Keyboard shortcuts**: ⌘9 for health dashboard
 - All lint checks pass cleanly
+
+---
+Task ID: 1
+Agent: Graph Layout Engineer
+Task: Implement actual graph layout modes in the force-directed graph component
+
+Work Log:
+- Added `computeLayoutPositions()` function with all 6 layout modes: force (existing), radial, circular, hierarchical, grid, spiral
+- Added `GraphLayout` import from types and `graphLayout`/`setGraphLayout` from store
+- Added `layoutAnimRef` and `graphLayoutRef` refs for layout animation control
+- Split particle animation into its own always-running useEffect (independent of layout mode)
+- Made force simulation conditional — only runs when `graphLayout === force`
+- Added layout switching useEffect that computes target positions and smoothly animates nodes (easeOutCubic, 600ms)
+- Added layout mode quick-toggle buttons as overlay (bottom-left, above Reset View): [Force] [Radial] [Circle] [Tree] [Grid] [Spiral]
+- Each button has lucide icon (Atom, Target, Circle, GitBranch, LayoutGrid, Orbit), label, and keyboard shortcut hint on hover
+- Active layout highlighted with emerald color scheme
+- Non-force layouts still allow drag to reposition individual nodes
+- Fixed Spiral icon (not available in lucide-react) → replaced with Orbit icon
+- All existing functionality preserved: zoom, pan, hover, drag, context menu, particles, health rings, etc.
+- Lint passes with 0 errors
+
+Stage Summary:
+- All 6 graph layout modes fully implemented with smooth animated transitions
+- Force simulation correctly paused when non-force layout is active
+- Layout toggle buttons provide quick access with visual feedback
+- Particle animation continues regardless of layout mode
+
+
+---
+Task ID: 2
+Agent: Settings + Semantics Enhancement
+Task: Add semantics tab, enhance ingestion, improve concept groups
+
+Work Log:
+- Read existing files: settings-dialog.tsx, concept-groups.tsx, types.ts, store.ts
+- Added "Semantics" tab with Palette icon to settings dialog (6 tabs total now)
+- Created comprehensive Semantics tab content with 4 sections:
+  - Node Sizes: Visual examples (colored dots) for all 5 size modes (default, stars, activity, dependencies, files)
+  - Node Colors: Color swatches with labels for category mode (9 categories), language mode (5 languages), health mode (3 levels), activity mode (3 levels)
+  - Edge Types: Inline SVG examples for tag edges (solid), dependency edges (dashed blue), edge thickness variants, count badges
+  - Special Indicators: Visual examples for emerald ring (deep-analyzed), health ring (SVG arc), hub glow (blur layers)
+- Enhanced ingestion tab with 9 new mocked configs in "Advanced Ingestion" section:
+  - Webhook URL (Input), Rate Limit Mode (select), Exclude Patterns (Input), Include Forks (Switch), LLM Model (select), Analysis Concurrency (Slider), Custom Tags (Input), Auto-tag Rules (Textarea), Export Schedule (select)
+  - All disabled with opacity-50 and MockedBadge, with MOCKED code comments
+- Added 5 new concept groups to concept-groups.tsx:
+  - firebird (🔥🦅), rising-star (⭐📈), power-couple (🤝💎), lone-wolf (🐺), ecosystem (🌿🌐)
+- Implemented matching logic for all 5 new special groups in matchesConceptGroup()
+- Fixed pre-existing runtime error in cockpit-dashboard.tsx where advancedFilters used wrong property names
+- Added Textarea import and Sparkles icon import to settings-dialog
+- Lint passes clean, page loads 200 OK
+
+Stage Summary:
+- Settings dialog now has 6 tabs: General, Graph, Semantics, Ingestion, Data, About
+- Semantics tab provides comprehensive visual reference for graph visual language
+- Ingestion tab has 9 additional mocked advanced configs (total 16 mocked items)
+- Concept groups now total 14 groups (8 keyword-based + 6 special computed)
+- Fixed cockpit-dashboard.tsx runtime error (advancedFilters property mismatch)
+
+---
+Task ID: 3
+Agent: Connection Enhancement + Styling Polish
+Task: Strengthen connections, add semantics overlay, polish styling
+
+Work Log:
+- Enhanced edge opacity: Tag edges from 0.06→0.12, Dependency edges from 0.08→0.15 (with weight-proportional gradient: stronger connections more visible)
+- Enhanced edge thickness: Tag edges base 0.8px +0.5/item max 4px (was 0.5+0.3 max 3); Dependency edges base 1.5px +0.8/dep max 6px (was 1+0.5 max 4); highlighted edges get +2/+1.5 boost
+- Added edge type indicator dots: Green dot at both ends of highlighted tag edges, Blue dot for dependency edges
+- Replaced single pulse dot with 3 flowing particles at different offsets (0, 0.33, 0.66) along highlighted edges
+- Enhanced edge tooltip: Rich glassmorphism popup showing connection type, project names (source↔target), shared item count, and item list (up to 8, then "+N more")
+- Added connection strength gradient: Non-highlighted edges have weight-proportional opacity (weightFactor = min(weight/8, 1), adds up to 0.12 opacity)
+- Created /src/components/graph-semantics-overlay.tsx: Collapsible "?" button in top-right of graph, expands to show node size/color meanings, line type legend (solid=tags, dashed=deps), emerald ring indicator, health arc explanation
+- Integrated GraphSemanticsOverlay into project-graph.tsx container div
+- Added CSS classes in globals.css: graph-layout-transition, graph-edge-tooltip (glassmorphism), hover-card-pop, edge-glow-animate, section-header-enhanced, activity-row-even/odd, activity-row-hover
+- Enhanced cockpit-dashboard left panel section headers: font-semibold + section-header-enhanced class with emerald underline accent
+- Added alternating row backgrounds in activity feed (activity-row-even/odd classes)
+- Added Graph Semantics quick info bar below header (visible in graph view): shows current Size/Color modes + "Hover lines for details" hint
+- Added nodeSizeBy and colorBy to CockpitDashboard store destructuring for reactive semantics info
+- All lint checks pass with 0 errors
+
+Stage Summary:
+- Edge connections are now significantly more visible with 2x base opacity and dramatic weight scaling
+- 3 animated flow particles replace single pulse for richer edge animation
+- Colored endpoint dots instantly distinguish tag (green) vs dependency (blue) connections
+- Rich glassmorphism tooltip shows full connection details on edge hover
+- Graph Semantics Overlay provides quick reference for graph visual language
+- Section headers enhanced with bold weight and emerald underline accent
+- Activity feed rows have subtle alternating backgrounds
+- Graph Semantics quick info bar appears below header in graph view
+
+---
+Task ID: 13
+Agent: Main (Session Continuation — "Zip It All Together")
+Task: Consolidate all features, fix QA issues, polish UI, update worklog
+
+Work Log:
+- Read worklog.md and all key project files to assess current state
+- Launched 3 parallel agents:
+  - Agent 1: Implement actual graph layout modes (radial, circular, hierarchical, grid, spiral)
+  - Agent 2: Enhance settings (semantics tab, ingestion mock configs, concept groups)
+  - Agent 3: Strengthen connections, add semantics overlay, polish styling
+- All 3 agents completed successfully with 0 lint errors
+- QA testing via agent-browser confirmed all features working:
+  - 28 repos loaded, 28/28 deep-analyzed
+  - All 6 graph layout modes working (Force, Radial, Circle, Tree, Grid, Spiral)
+  - Layout mode quick-toggle buttons visible at bottom-left
+  - Settings dialog with 6 tabs (General, Graph, Semantics, Ingestion, Data, About)
+  - Semantics tab shows comprehensive visual language reference
+  - Ingestion tab shows mocked configs with 🚧 badges
+  - Concept groups with composite emoji (🔥🦅 Firebird, ⭐📈 Rising Stars, etc.)
+  - Grid view, timeline, stats, network views all functional
+  - Zero JavaScript errors in console
+- Fixed QA issues:
+  - Settings button: Changed from icon-only to labeled button with "Settings" text (hidden on small screens)
+  - Semantics overlay: Changed from tiny "?" to visible "Legend" button with emerald accent
+  - Semantics overlay z-index: Increased from z-30 to z-40 to prevent being hidden
+  - Onboarding tour: Ensured pointer-events work correctly for Skip/Next buttons
+
+Stage Summary:
+- All requested features from previous session implemented and integrated
+- Graph layout modes fully functional with smooth animated transitions
+- Connection strength dramatically enhanced with thicker edges, flow particles, colored endpoint dots
+- Graph semantics clearly documented via overlay panel and settings tab
+- 5 new concept groups with composite emoji (Firebird, Rising Stars, Power Couples, Lone Wolves, Ecosystem Hubs)
+- Settings dialog comprehensive with 6 tabs and 9+ new ingestion mock configs
+- All lint checks pass, zero runtime errors
+
+---
+
+## Current Project Status
+
+**Git Atlas** is a fully functional, feature-rich interactive GitHub corpus explorer with:
+
+- **28/28 repos deep analyzed** for user Coldaine (all features unlocked)
+- **9 view modes**: Force-directed graph, card grid, timeline, stats overview, dependency network, tech radar, bookmarks, relationship map, health dashboard
+- **6 graph layout modes**: Force, Radial, Circular, Hierarchical (Tree), Grid, Spiral — with smooth animated transitions
+- **Enhanced connections**: Weight-proportional thickness, 3 animated flow particles, colored endpoint dots (green=tag, blue=dep), rich glassmorphism tooltips
+- **Graph semantics**: Legend overlay (top-right), semantics quick info bar, settings Semantics tab
+- **Concept groups**: 14 groups with composite emoji including 🔥🦅 Firebird, ⭐📈 Rising Stars, 🤝💎 Power Couples, 🐺 Lone Wolves, 🌿🌐 Ecosystem Hubs
+- **Settings dialog**: 6 tabs (General, Graph, Semantics, Ingestion, Data, About) with 9+ mocked ingestion configs
+- **Advanced filters**: By language, category, framework, stars, deep-analysis status, archived status
+- **Smart Search**: "Do I already have X?" with deep analysis data
+- **Compare**: Side-by-side project comparison
+- **Export**: Markdown/JSON portfolio export with copy + download
+- **Command Palette**: ⌘K for quick actions
+- **Keyboard Shortcuts**: /, ⌘1-9, ?, Esc
+- **Detail Panel**: Gradient header, health score ring, skill dots, tech stack, file tree, dependencies, similar projects, proposed README with diff view
+- **Visual Polish**: Custom scrollbar, shimmer effects, gradient header, animated counters, view transitions
+
+## Goals Completed / Verification Results
+
+- ✅ Settings menu with mocked ingestion configs (clearly labeled 🚧)
+- ✅ Layout mode switching buttons in graph (6 modes with smooth animation)
+- ✅ Connections visually stronger (2x opacity, thicker weights, flow particles, endpoint dots)
+- ✅ Enhanced filtering/tagging (Advanced Filters + Concept Groups)
+- ✅ Fun composite emoji (🔥🦅, ⭐📈, 🤝💎, 🐺, 🌿🌐)
+- ✅ Graph semantics clarified (Legend overlay, settings tab, quick info bar)
+- ✅ Sub-window drill-down (ConceptDrilldown component)
+- ✅ Draggable/resizable sidebars (ResizablePanelGroup)
+- ✅ Button audit (title attributes with ✅/⚠️/🚧 indicators)
+- ✅ QA tested via agent-browser — zero errors, all features working
+
+## Unresolved Issues / Next-Phase Priorities
+
+1. **Mobile responsiveness** — Current layout is desktop-only; need responsive breakpoints
+2. **Push proposed READMEs back to GitHub** — Requires write permissions on PAT
+3. **Agentic memory** — Auto-suggest existing tools when user describes a need in real-time
+4. **Commit history analysis** — Per-project commit patterns and contributor analysis
+5. **Activity heatmap improvements** — Better horizontal scroll, larger cells in left panel
+6. **URL state persistence** — Save view mode, filters, and selections in URL params
+7. **Right panel filter tabs** — Use URL state for persistence across navigation
+8. **Dependency network animation** — Animated threshold changes, hover highlights
+9. **Layout mode previews** — Show tiny thumbnail previews of each layout in settings
+10. **Onboarding tour improvements** — Better mobile support, step indicators

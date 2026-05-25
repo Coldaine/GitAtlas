@@ -2,10 +2,11 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useAtlasStore } from '@/lib/store';
-import { Project, CATEGORY_COLORS, LANGUAGE_COLORS, ColorBy, NodeSizeBy } from '@/lib/types';
+import { Project, CATEGORY_COLORS, LANGUAGE_COLORS, ColorBy, NodeSizeBy, GraphLayout } from '@/lib/types';
 import { ProjectHoverCard } from '@/components/project-hover-card';
 import { GraphLegend } from '@/components/graph-legend';
-import { RotateCcw, ExternalLink, Sparkles, Bookmark, FileText } from 'lucide-react';
+import { GraphSemanticsOverlay } from '@/components/graph-semantics-overlay';
+import { RotateCcw, ExternalLink, Sparkles, Bookmark, FileText, Atom, Circle, Target, GitBranch, LayoutGrid, Orbit } from 'lucide-react';
 
 interface NodePosition {
   id: string;
@@ -76,8 +77,123 @@ function countFiles(tree: { type: string; children?: { type: string; children?: 
   return count;
 }
 
+// Compute target positions for a given layout mode
+function computeLayoutPositions(
+  layout: Exclude<GraphLayout, 'force'>,
+  nodeList: NodePosition[],
+  edgeList: Edge[],
+  width: number,
+  height: number
+): Map<string, { x: number; y: number }> {
+  const positions = new Map<string, { x: number; y: number }>();
+  const cx = width / 2;
+  const cy = height / 2;
+
+  switch (layout) {
+    case 'circular': {
+      const radius = Math.min(width, height) * 0.35;
+      nodeList.forEach((node, i) => {
+        const angle = (i / nodeList.length) * Math.PI * 2 - Math.PI / 2;
+        positions.set(node.id, { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius });
+      });
+      break;
+    }
+    case 'radial': {
+      // Count edges per node
+      const edgeCount = new Map<string, number>();
+      edgeList.forEach(e => {
+        edgeCount.set(e.source, (edgeCount.get(e.source) || 0) + 1);
+        edgeCount.set(e.target, (edgeCount.get(e.target) || 0) + 1);
+      });
+
+      // Group nodes by category
+      const catGroups = new Map<string, NodePosition[]>();
+      nodeList.forEach(n => {
+        const cat = n.project.category || 'other';
+        if (!catGroups.has(cat)) catGroups.set(cat, []);
+        catGroups.get(cat)!.push(n);
+      });
+
+      const catKeys = [...catGroups.keys()];
+      catKeys.forEach((cat, catIdx) => {
+        const catNodes = catGroups.get(cat)!;
+        const angleStart = (catIdx / catKeys.length) * Math.PI * 2;
+        const angleSpan = (1 / catKeys.length) * Math.PI * 2;
+
+        catNodes.forEach((node, i) => {
+          const connections = edgeCount.get(node.id) || 0;
+          const ring = connections > 4 ? 0 : connections > 2 ? 1 : 2; // inner, middle, outer
+          const radius = Math.min(width, height) * (0.15 + ring * 0.12);
+          const angle = angleStart + (i / catNodes.length) * angleSpan;
+          positions.set(node.id, { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius });
+        });
+      });
+      break;
+    }
+    case 'grid': {
+      const cols = Math.ceil(Math.sqrt(nodeList.length));
+      const spacing = Math.min(width / (cols + 1), height / (Math.ceil(nodeList.length / cols) + 1));
+      const startX = cx - ((cols - 1) * spacing) / 2;
+      const startY = cy - ((Math.ceil(nodeList.length / cols) - 1) * spacing) / 2;
+      nodeList.forEach((node, i) => {
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        positions.set(node.id, { x: startX + col * spacing, y: startY + row * spacing });
+      });
+      break;
+    }
+    case 'hierarchical': {
+      // Build a simple hierarchy based on incoming edges
+      const inDegree = new Map<string, number>();
+      edgeList.forEach(e => inDegree.set(e.target, (inDegree.get(e.target) || 0) + 1));
+
+      // Topological-ish sort: nodes with fewer incoming edges come first
+      const sorted = [...nodeList].sort((a, b) => (inDegree.get(a.id) || 0) - (inDegree.get(b.id) || 0));
+      const levels = new Map<string, number>();
+      sorted.forEach(node => {
+        let maxParentLevel = -1;
+        edgeList.forEach(e => {
+          if (e.target === node.id && levels.has(e.source)) {
+            maxParentLevel = Math.max(maxParentLevel, levels.get(e.source)!);
+          }
+        });
+        levels.set(node.id, maxParentLevel + 1);
+      });
+
+      const maxLevel = Math.max(...[...levels.values()], 0);
+      const levelNodes = new Map<number, NodePosition[]>();
+      sorted.forEach(n => {
+        const lvl = levels.get(n.id) || 0;
+        if (!levelNodes.has(lvl)) levelNodes.set(lvl, []);
+        levelNodes.get(lvl)!.push(n);
+      });
+
+      const levelHeight = height / (maxLevel + 2);
+      levelNodes.forEach((lvlNodes, lvl) => {
+        const y = levelHeight * (lvl + 1);
+        const lvlWidth = width / (lvlNodes.length + 1);
+        lvlNodes.forEach((node, i) => {
+          positions.set(node.id, { x: lvlWidth * (i + 1), y });
+        });
+      });
+      break;
+    }
+    case 'spiral': {
+      const maxRadius = Math.min(width, height) * 0.4;
+      nodeList.forEach((node, i) => {
+        const t = i / nodeList.length;
+        const angle = t * Math.PI * 6; // 3 full rotations
+        const radius = t * maxRadius;
+        positions.set(node.id, { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius });
+      });
+      break;
+    }
+  }
+  return positions;
+}
+
 export function ProjectGraph({ projects }: ProjectGraphProps) {
-  const { setSelectedProject, activeTags, nodeSizeBy, colorBy, edgeThreshold, showParticles, showClusterBackgrounds, showHealthRings, showDependencyEdges, animationSpeed } = useAtlasStore();
+  const { setSelectedProject, activeTags, nodeSizeBy, colorBy, edgeThreshold, showParticles, showClusterBackgrounds, showHealthRings, showDependencyEdges, animationSpeed, graphLayout, setGraphLayout } = useAtlasStore();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes] = useState<NodePosition[]>([]);
@@ -91,6 +207,8 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
   const dragOffsetRef = useRef({ x: 0, y: 0 });
   const initializedRef = useRef(false);
   const edgesRef = useRef<Edge[]>([]);
+  const layoutAnimRef = useRef<number>(0);
+  const graphLayoutRef = useRef<GraphLayout>(graphLayout);
 
   // Zoom/pan state
   const [zoom, setZoom] = useState(1);
@@ -100,8 +218,16 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
 
-  // Hovered edge tooltip state
-  const [hoveredEdgeInfo, setHoveredEdgeInfo] = useState<{ x: number; y: number; label: string } | null>(null);
+  // Hovered edge tooltip state — richer info popup
+  const [hoveredEdgeInfo, setHoveredEdgeInfo] = useState<{
+    x: number;
+    y: number;
+    edgeType: 'tag' | 'dependency';
+    weight: number;
+    sharedItems: string[];
+    sourceName: string;
+    targetName: string;
+  } | null>(null);
 
   // Connections panel state (shown on node click)
   const [connectionsPanel, setConnectionsPanel] = useState<{ nodeId: string; connections: { nodeId: string; projectName: string; sharedItems: string[]; edgeType: 'tag' | 'dependency' }[] } | null>(null);
@@ -337,14 +463,44 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     initializedRef.current = true;
   }, [projects, dimensions, computedEdges, nodeSize, nodeColor]);
 
-  // Force simulation
+  // Particle animation — always runs regardless of layout
+  useEffect(() => {
+    const animateParticles = () => {
+      const pRef = particlesRef.current;
+      for (const p of pRef) {
+        p.x += p.vx;
+        p.y += p.vy;
+        p.phase += 0.01;
+        p.opacity = p.targetOpacity + Math.sin(p.phase) * 0.02;
+        if (p.x < 0) p.x = dimensions.width;
+        if (p.x > dimensions.width) p.x = 0;
+        if (p.y < 0) p.y = dimensions.height;
+        if (p.y > dimensions.height) p.y = 0;
+      }
+    };
+    const frame = () => {
+      animateParticles();
+      requestAnimationFrame(frame);
+    };
+    const id = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(id);
+  }, [dimensions]);
+
+  // Force simulation — only runs when graphLayout === 'force'
   useEffect(() => {
     if (!initializedRef.current || nodesRef.current.length === 0) return;
+
+    // Keep ref in sync
+    graphLayoutRef.current = graphLayout;
+
+    if (graphLayout !== 'force') return;
 
     const centerX = dimensions.width / 2;
     const centerY = dimensions.height / 2;
 
     const simulate = () => {
+      if (graphLayoutRef.current !== 'force') return;
+
       const ns = nodesRef.current;
       const es = edgesRef.current;
       const damping = 0.92;
@@ -403,28 +559,76 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         nodePositionCache.set(node.id, { x: node.x, y: node.y });
       }
 
-      // Update particles
-      const pRef = particlesRef.current;
-      for (const p of pRef) {
-        p.x += p.vx;
-        p.y += p.vy;
-        p.phase += 0.01;
-        p.opacity = p.targetOpacity + Math.sin(p.phase) * 0.02;
-
-        // Wrap around
-        if (p.x < 0) p.x = dimensions.width;
-        if (p.x > dimensions.width) p.x = 0;
-        if (p.y < 0) p.y = dimensions.height;
-        if (p.y > dimensions.height) p.y = 0;
-      }
-
       setNodes([...ns]);
       animRef.current = requestAnimationFrame(simulate);
     };
 
     animRef.current = requestAnimationFrame(simulate);
     return () => cancelAnimationFrame(animRef.current);
-  }, [dimensions]);
+  }, [dimensions, graphLayout]);
+
+  // Layout switching — compute target positions and animate when not in 'force' mode
+  useEffect(() => {
+    if (!initializedRef.current || nodesRef.current.length === 0) return;
+
+    graphLayoutRef.current = graphLayout;
+
+    if (graphLayout === 'force') return;
+
+    // Cancel any existing force simulation
+    cancelAnimationFrame(animRef.current);
+
+    // Compute target positions
+    const targetPositions = computeLayoutPositions(
+      graphLayout,
+      nodesRef.current,
+      edgesRef.current,
+      dimensions.width,
+      dimensions.height
+    );
+
+    // Record start positions for animation
+    const startPositions = new Map<string, { x: number; y: number }>();
+    nodesRef.current.forEach(n => {
+      startPositions.set(n.id, { x: n.x, y: n.y });
+    });
+
+    const duration = 600; // ms
+    const startTime = performance.now();
+
+    const animateLayout = (now: number) => {
+      if (graphLayoutRef.current === 'force') return;
+
+      const elapsed = now - startTime;
+      const t = Math.min(1, elapsed / duration);
+      // easeOutCubic
+      const ease = 1 - Math.pow(1 - t, 3);
+
+      const ns = nodesRef.current;
+      for (const node of ns) {
+        if (draggingRef.current === node.id) continue;
+
+        const start = startPositions.get(node.id);
+        const target = targetPositions.get(node.id);
+        if (start && target) {
+          node.x = start.x + (target.x - start.x) * ease;
+          node.y = start.y + (target.y - start.y) * ease;
+          node.vx = 0;
+          node.vy = 0;
+          nodePositionCache.set(node.id, { x: node.x, y: node.y });
+        }
+      }
+
+      setNodes([...ns]);
+
+      if (t < 1) {
+        layoutAnimRef.current = requestAnimationFrame(animateLayout);
+      }
+    };
+
+    layoutAnimRef.current = requestAnimationFrame(animateLayout);
+    return () => cancelAnimationFrame(layoutAnimRef.current);
+  }, [graphLayout, dimensions, computedEdges]);
 
   // Pulse animation for hovered edges
   useEffect(() => {
@@ -805,18 +1009,20 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
             const baseColor = isDependency ? '#3b82f6' : '#ffffff';
             const highlightColor = isDependency ? '#60a5fa' : '#10b981';
             const color = isHighlighted ? highlightColor : baseColor;
-            const opacity = isHighlighted ? 0.6 : isDependency ? 0.08 : 0.06;
+            // Connection strength gradient — stronger connections are more visible
+            const weightFactor = Math.min(edge.weight / 8, 1);
+            const opacity = isHighlighted ? 0.6 : isDependency ? 0.15 + weightFactor * 0.12 : 0.12 + weightFactor * 0.1;
 
             const gradientId = `grad-${edge.source}-${edge.target}`;
             const stroke = isHighlighted && !isDependency ? `url(#${gradientId})` : color;
 
-            // Edge weight: thicker edges = more shared items
+            // Edge weight: thicker edges = more shared items — enhanced scaling
             const baseWidth = isDependency
-              ? Math.min(1 + (edge.weight - 3) * 0.5, 4) // base 1, +0.5 per shared dep, max 4
-              : Math.min(0.5 + (edge.weight - 2) * 0.3, 3); // base 0.5, +0.3 per shared tag, max 3
+              ? Math.min(1.5 + (edge.weight - 3) * 0.8, 6) // base 1.5, +0.8 per shared dep, max 6
+              : Math.min(0.8 + (edge.weight - 2) * 0.5, 4); // base 0.8, +0.5 per shared tag, max 4
             const highlightedWidth = isDependency
-              ? Math.min(baseWidth + 1.5, 5)
-              : Math.min(baseWidth + 1, 4);
+              ? Math.min(baseWidth + 2, 8)
+              : Math.min(baseWidth + 1.5, 6);
             const strokeWidth = isHighlighted ? highlightedWidth : baseWidth;
 
             // Midpoint for badge/tooltip
@@ -827,10 +1033,9 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
             const px = source.x + (target.x - source.x) * pulseProgress;
             const py = source.y + (target.y - source.y) * pulseProgress;
 
-            // Build tooltip label
-            const sharedLabel = isDependency
-              ? `Shared deps: ${(edge.sharedItems || []).slice(0, 5).join(', ')}${(edge.sharedItems || []).length > 5 ? '...' : ''}`
-              : `Shared: ${(edge.sharedItems || []).slice(0, 5).join(', ')}${(edge.sharedItems || []).length > 5 ? '...' : ''}`;
+            // Build tooltip info
+            const sourceProject = projects.find(p => p.id === edge.source);
+            const targetProject = projects.find(p => p.id === edge.target);
 
             return (
               <g key={`edge-${i}`}>
@@ -874,22 +1079,43 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                     setHoveredEdgeInfo({
                       x: e.clientX - rect.left,
                       y: e.clientY - rect.top,
-                      label: sharedLabel,
+                      edgeType: edge.type,
+                      weight: edge.weight,
+                      sharedItems: edge.sharedItems || [],
+                      sourceName: sourceProject?.name || edge.source,
+                      targetName: targetProject?.name || edge.target,
                     });
                   }}
                   onMouseLeave={() => setHoveredEdgeInfo(null)}
                 />
-                {/* Animated pulse dot traveling along highlighted edge */}
+                {/* Animated flow particles traveling along highlighted edge — 3 dots at different positions */}
                 {isHighlighted && (
-                  <circle
-                    cx={px}
-                    cy={py}
-                    r={2.5}
-                    fill={highlightColor}
-                    opacity={0.8}
-                    className="pointer-events-none"
-                    filter="url(#glow)"
-                  />
+                  <>
+                    {[0, 0.33, 0.66].map((offset, idx) => {
+                      const t = (pulseProgress + offset) % 1;
+                      const particleX = source.x + (target.x - source.x) * t;
+                      const particleY = source.y + (target.y - source.y) * t;
+                      return (
+                        <circle
+                          key={`particle-${idx}`}
+                          cx={particleX}
+                          cy={particleY}
+                          r={idx === 0 ? 3 : 2}
+                          fill={highlightColor}
+                          opacity={idx === 0 ? 0.85 : 0.5}
+                          className="pointer-events-none"
+                          filter="url(#glow)"
+                        />
+                      );
+                    })}
+                  </>
+                )}
+                {/* Edge type indicator dots at both ends of highlighted edges */}
+                {isHighlighted && (
+                  <>
+                    <circle cx={source.x} cy={source.y} r={3} fill={isDependency ? '#3b82f6' : '#10b981'} opacity={0.7} className="pointer-events-none" />
+                    <circle cx={target.x} cy={target.y} r={3} fill={isDependency ? '#3b82f6' : '#10b981'} opacity={0.7} className="pointer-events-none" />
+                  </>
                 )}
                 {/* Connection count badge at midpoint for highlighted edges */}
                 {isHighlighted && (
@@ -1340,22 +1566,31 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         </g>
       </svg>
 
-      {/* Edge tooltip on hover */}
+      {/* Edge tooltip on hover — richer info popup */}
       {hoveredEdgeInfo && (
         <div
-          className="absolute z-30 pointer-events-none px-2.5 py-1.5 rounded-md text-[10px] shadow-lg border border-border/30"
+          className="absolute z-30 pointer-events-none graph-edge-tooltip"
           style={{
-            left: hoveredEdgeInfo.x + 10,
-            top: hoveredEdgeInfo.y - 20,
-            background: 'rgba(10,10,10,0.92)',
-            color: '#e2e8f0',
-            maxWidth: 250,
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
+            left: hoveredEdgeInfo.x + 12,
+            top: hoveredEdgeInfo.y - 10,
           }}
         >
-          {hoveredEdgeInfo.label}
+          <div className="flex items-center gap-1.5 mb-1">
+            <span className={`w-2 h-2 rounded-full shrink-0 ${hoveredEdgeInfo.edgeType === 'dependency' ? 'bg-blue-400' : 'bg-emerald-400'}`} />
+            <span className="text-[10px] font-semibold text-foreground/90 uppercase tracking-wider">
+              {hoveredEdgeInfo.edgeType === 'dependency' ? 'Dependency' : 'Tag'} Connection
+            </span>
+          </div>
+          <div className="text-[9px] text-muted-foreground/60 mb-1">
+            {hoveredEdgeInfo.sourceName} ↔ {hoveredEdgeInfo.targetName}
+          </div>
+          <div className="text-[9px] text-emerald-400/70 mb-1">
+            {hoveredEdgeInfo.weight} shared {hoveredEdgeInfo.edgeType === 'dependency' ? 'dependencies' : 'items'}
+          </div>
+          <div className="text-[8px] text-muted-foreground/40 leading-relaxed">
+            {hoveredEdgeInfo.sharedItems.slice(0, 8).join(', ')}
+            {hoveredEdgeInfo.sharedItems.length > 8 && ` +${hoveredEdgeInfo.sharedItems.length - 8} more`}
+          </div>
         </div>
       )}
 
@@ -1406,6 +1641,38 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
           </div>
         </div>
       )}
+
+      {/* Layout mode toggle buttons */}
+      <div className="absolute bottom-20 left-3 flex gap-1 z-10">
+        {([
+          { key: 'force' as GraphLayout, label: 'Force', icon: Atom, shortcut: '1' },
+          { key: 'radial' as GraphLayout, label: 'Radial', icon: Target, shortcut: '2' },
+          { key: 'circular' as GraphLayout, label: 'Circle', icon: Circle, shortcut: '3' },
+          { key: 'hierarchical' as GraphLayout, label: 'Tree', icon: GitBranch, shortcut: '4' },
+          { key: 'grid' as GraphLayout, label: 'Grid', icon: LayoutGrid, shortcut: '5' },
+          { key: 'spiral' as GraphLayout, label: 'Spiral', icon: Orbit, shortcut: '6' },
+        ]).map(({ key, label, icon: Icon, shortcut }) => {
+          const isActive = graphLayout === key;
+          return (
+            <button
+              key={key}
+              onClick={() => setGraphLayout(key)}
+              className={`flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-medium transition-all ${
+                isActive
+                  ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 shadow-sm shadow-emerald-500/10'
+                  : 'bg-card/60 backdrop-blur-sm border border-border/20 text-muted-foreground/40 hover:text-foreground/60 hover:bg-card/80'
+              }`}
+              title={`${label} layout (${shortcut})`}
+            >
+              <Icon className="w-3 h-3" />
+              <span className="hidden sm:inline">{label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Graph Semantics Overlay — "?" button in top-right */}
+      <GraphSemanticsOverlay />
 
       {/* Reset View button */}
       <button

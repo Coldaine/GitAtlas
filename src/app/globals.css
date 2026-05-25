@@ -483,3 +483,64 @@
   box-shadow: 0 8px 32px oklch(0 0 0 / 0.4);
   backdrop-filter: blur(8px);
 }
+
+/* ===== NEW: Connection Enhancement + Styling Polish ===== */
+
+/* Smooth transitions for layout mode switches */
+.graph-layout-transition {
+  transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1),
+              opacity 0.3s ease;
+}
+
+/* Graph edge tooltip — glassmorphism with rich content */
+.graph-edge-tooltip {
+  background: rgba(8, 8, 12, 0.92);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5),
+              0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  min-width: 160px;
+  max-width: 280px;
+}
+
+/* Hover card shadow enhancement — larger shadow for more pop */
+.hover-card-pop {
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5),
+              0 0 0 1px rgba(255, 255, 255, 0.06) inset,
+              0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Edge glow animation — subtle highlight transition */
+@keyframes edgeGlow {
+  0% { filter: drop-shadow(0 0 0px transparent); }
+  50% { filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.2)); }
+  100% { filter: drop-shadow(0 0 0px transparent); }
+}
+
+.edge-glow-animate {
+  animation: edgeGlow 1.5s ease-in-out;
+}
+
+/* Left panel section header — bolder with underline accent */
+.section-header-enhanced {
+  font-weight: 600;
+  padding-bottom: 6px;
+  border-bottom: 1px solid oklch(0.696 0.17 162.48 / 0.12);
+  margin-bottom: 8px;
+}
+
+/* Right panel activity feed — alternating row backgrounds */
+.activity-row-even {
+  background: rgba(255, 255, 255, 0.015);
+}
+.activity-row-odd {
+  background: transparent;
+}
+
+/* Activity row hover enhancement */
+.activity-row-hover:hover {
+  background: rgba(16, 185, 129, 0.04);
+}
