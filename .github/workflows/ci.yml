@@ -1,0 +1,1 @@
+name: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: oven-sh/setup-bun@v1\n      - name: Install dependencies\n        run: bun install\n      - name: Lint\n        run: bun run lint\n      - name: Test\n        run: bun run test:vitest\n
