@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { GITHUB_HEADERS } from '@/lib/github-token';
-import ZAI from 'z-ai-web-dev-sdk';
+// Why: provider-agnostic LLM client (see src/lib/llm.ts).
+import { chat } from '@/lib/llm';
 
 export async function POST(request: NextRequest) {
   try {
@@ -464,7 +465,7 @@ async function generateDeepSummary(
   keyFiles: { path: string; content: string; purpose: string }[]
 ): Promise<string> {
   try {
-    const zai = await ZAI.create();
+    // Provider-agnostic chat client; see src/lib/llm.ts.
 
     // Build rich context from actual code analysis
     const treeOverview = fileTree
@@ -480,7 +481,7 @@ async function generateDeepSummary(
       ? `Runtime: ${dependencies.runtime?.join(', ') || 'none'}\nDev: ${dependencies.dev?.join(', ') || 'none'}`
       : 'No dependencies detected';
 
-    const completion = await zai.chat.completions.create({
+    const summary = (await chat({
       messages: [
         {
           role: 'system',
@@ -512,10 +513,8 @@ async function generateDeepSummary(
           ].join('\n'),
         },
       ],
-      thinking: { type: 'disabled' },
-    });
-
-    const summary = completion.choices?.[0]?.message?.content?.trim();
+      temperature: 0.4,
+    })).trim();
     if (summary && summary.length > 10) {
       return summary;
     }

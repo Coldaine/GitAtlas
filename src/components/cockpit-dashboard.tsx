@@ -21,6 +21,10 @@ import { RelationshipMap } from '@/components/relationship-map';
 import { AIRecommendations } from '@/components/ai-recommendations';
 import { HealthDashboard } from '@/components/health-dashboard';
 import { SettingsDialog } from '@/components/settings-dialog';
+// Why imported here: cockpit owns the top-level controls bar, so the panel
+// trigger (a Button beside Settings) lives in this file. The panel itself
+// reads its open state from the Zustand store, so we just need to mount it.
+import { GraphTweaksPanel } from '@/components/graph-tweaks-panel';
 import { ConceptGroups, CONCEPT_GROUPS, getProjectsForGroup } from '@/components/concept-groups';
 import { AdvancedFilters, AdvancedFilterState, DEFAULT_FILTERS, applyAdvancedFilters } from '@/components/advanced-filters';
 import { ConceptDrilldown } from '@/components/concept-drilldown';
@@ -40,7 +44,7 @@ import {
   Building2, BarChart3, RefreshCw, Microscope as DeepAnalyzeIcon,
   Download, Share2, Target, Bookmark as BookmarkIcon,
   Code2, Tag, GitCommit, Hash, Layers, Trophy,
-  Circle, GitBranch, Heart, Settings,
+  Circle, GitBranch, Heart, Settings, Sliders,
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
@@ -83,6 +87,9 @@ export function CockpitDashboard() {
     setProjects, isDeepAnalyzing, deepAnalyzeProgress,
     setDeepAnalyzing, setDeepAnalyzeProgress, updateProject,
     nodeSizeBy, colorBy,
+    // Why: cockpit triggers the panel via setShowGraphTweaksPanel; we don't
+    // need to read the boolean here because GraphTweaksPanel subscribes.
+    setShowGraphTweaksPanel,
   } = useAtlasStore();
 
   const [smartSearchOpen, setSmartSearchOpen] = useState(false);
@@ -664,6 +671,20 @@ export function CockpitDashboard() {
             ) : (
               <><FileText className="w-3 h-3" /> Rewrite READMEs</>
             )}
+          </Button>
+
+          {/* Tune Graph — opens the live physics/connection panel.
+              Why beside Settings: same visual weight, but distinct concern:
+              Settings = app config, Tune Graph = visualization tuning. */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowGraphTweaksPanel(true)}
+            className="h-7 gap-1 text-xs border-border/20 text-muted-foreground/50 hover:text-foreground/70 hover:border-border/40 transition-all px-2"
+            title="Tune graph physics, layout, and connection sources"
+          >
+            <Sliders className="w-3 h-3" />
+            <span className="hidden sm:inline">Tune Graph</span>
           </Button>
 
           {/* Settings */}
@@ -1525,6 +1546,10 @@ export function CockpitDashboard() {
 
       {/* Settings dialog */}
       <SettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      {/* Why mounted unconditionally: the Sheet handles its own open state
+          from the store, so mounting is cheap and keeps the trigger logic
+          in one place. */}
+      <GraphTweaksPanel />
 
       {/* AI Recommendations */}
       <AIRecommendations

@@ -30,6 +30,36 @@ interface AtlasState {
   animationSpeed: number;
   showEdgeLabels: boolean;
 
+  // Why: previously the Verlet physics constants were hardcoded inside
+  // project-graph.tsx. Exposing them as store state lets the new
+  // GraphTweaksPanel adjust the simulation live without re-mounting the SVG,
+  // and keeps the defaults co-located with everything else the panel touches.
+  repulsion: number;        // node-node repulsion strength
+  linkStrength: number;     // spring stiffness for tag/category edges
+  linkDistance: number;     // ideal distance for tag/category edges (px)
+  depLinkDistance: number;  // ideal distance for dependency edges (px)
+  damping: number;          // 0..1, velocity multiplier per tick
+  centering: number;        // pull toward viewport center
+  nodeSizeBase: number;     // smallest node radius in px
+  nodeSizeScale: number;    // multiplier on top of nodeSizeBy metric
+  minSharedDeps: number;    // dependency overlap required to draw an edge
+
+  // Why: a single boolean toggle per *kind* of connection. The graph
+  // currently fuses tag/topic/language/dependency edges into one stream;
+  // splitting them lets the user reason about each signal in isolation
+  // (e.g. "show me only dependency edges") without losing the others.
+  connectionSources: {
+    tag: boolean;        // shared tag/topic/language
+    dependency: boolean; // shared package dependencies
+    framework: boolean;  // shared frameworks (from codeSignature)
+    category: boolean;   // same category bucket
+    owner: boolean;      // same ownerLogin
+  };
+
+  // Why: separate panel from the existing Settings dialog so power-users can
+  // tweak physics without losing the graph view to a modal.
+  showGraphTweaksPanel: boolean;
+
   // Concept group filters
   activeConceptGroups: string[];
 
@@ -64,6 +94,20 @@ interface AtlasState {
   setAnimationSpeed: (v: number) => void;
   setShowEdgeLabels: (v: boolean) => void;
 
+  // Graph physics / connection setters (see field docs above for why each exists)
+  setRepulsion: (v: number) => void;
+  setLinkStrength: (v: number) => void;
+  setLinkDistance: (v: number) => void;
+  setDepLinkDistance: (v: number) => void;
+  setDamping: (v: number) => void;
+  setCentering: (v: number) => void;
+  setNodeSizeBase: (v: number) => void;
+  setNodeSizeScale: (v: number) => void;
+  setMinSharedDeps: (v: number) => void;
+  setConnectionSource: (k: keyof AtlasState['connectionSources'], v: boolean) => void;
+  setShowGraphTweaksPanel: (v: boolean) => void;
+  resetGraphTweaks: () => void;
+
   // Concept group setters
   toggleConceptGroup: (g: string) => void;
   setActiveConceptGroups: (g: string[]) => void;
@@ -97,6 +141,27 @@ export const useAtlasStore = create<AtlasState>((set) => ({
   showDependencyEdges: true,
   animationSpeed: 1,
   showEdgeLabels: true,
+
+  // Why these defaults: they match the constants that were previously
+  // hardcoded inside project-graph.tsx, so flipping the panel on is a no-op
+  // visually until the user actually drags something.
+  repulsion: 3500,
+  linkStrength: 0.004,
+  linkDistance: 130,
+  depLinkDistance: 100,
+  damping: 0.92,
+  centering: 0.008,
+  nodeSizeBase: 10,
+  nodeSizeScale: 1,
+  minSharedDeps: 3,
+  connectionSources: {
+    tag: true,         // current behavior: tag edges on
+    dependency: true,  // current behavior: dependency edges on
+    framework: false,  // new signal, off by default to keep parity
+    category: false,   // new signal, off by default
+    owner: false,      // new signal, off by default
+  },
+  showGraphTweaksPanel: false,
 
   // Concept group defaults
   activeConceptGroups: [],
@@ -142,6 +207,45 @@ export const useAtlasStore = create<AtlasState>((set) => ({
   setShowDependencyEdges: (v) => set({ showDependencyEdges: v }),
   setAnimationSpeed: (v) => set({ animationSpeed: v }),
   setShowEdgeLabels: (v) => set({ showEdgeLabels: v }),
+
+  // Why immutable spread for connectionSources: zustand subscribers only
+  // re-render when the reference changes, so we must replace the object.
+  setRepulsion: (v) => set({ repulsion: v }),
+  setLinkStrength: (v) => set({ linkStrength: v }),
+  setLinkDistance: (v) => set({ linkDistance: v }),
+  setDepLinkDistance: (v) => set({ depLinkDistance: v }),
+  setDamping: (v) => set({ damping: v }),
+  setCentering: (v) => set({ centering: v }),
+  setNodeSizeBase: (v) => set({ nodeSizeBase: v }),
+  setNodeSizeScale: (v) => set({ nodeSizeScale: v }),
+  setMinSharedDeps: (v) => set({ minSharedDeps: v }),
+  setConnectionSource: (k, v) =>
+    set((state) => ({ connectionSources: { ...state.connectionSources, [k]: v } })),
+  setShowGraphTweaksPanel: (v) => set({ showGraphTweaksPanel: v }),
+  // Why a single reset: easier UX than 10 individual reset buttons; the
+  // defaults are pinned to the previously-hardcoded constants so this also
+  // doubles as a "restore original look" affordance.
+  resetGraphTweaks: () =>
+    set({
+      repulsion: 3500,
+      linkStrength: 0.004,
+      linkDistance: 130,
+      depLinkDistance: 100,
+      damping: 0.92,
+      centering: 0.008,
+      nodeSizeBase: 10,
+      nodeSizeScale: 1,
+      minSharedDeps: 3,
+      edgeThreshold: 2,
+      animationSpeed: 1,
+      connectionSources: {
+        tag: true,
+        dependency: true,
+        framework: false,
+        category: false,
+        owner: false,
+      },
+    }),
 
   // Concept group setters
   toggleConceptGroup: (g) =>

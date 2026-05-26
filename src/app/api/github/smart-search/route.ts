@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import ZAI from 'z-ai-web-dev-sdk';
+// Why: provider-agnostic LLM client (see src/lib/llm.ts).
+import { chat } from '@/lib/llm';
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,9 +49,7 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    const zai = await ZAI.create();
-
-    const completion = await zai.chat.completions.create({
+    const content = await chat({
       messages: [
         {
           role: 'system',
@@ -74,10 +73,9 @@ Respond with ONLY the JSON array, no other text.`,
           content: `Need: "${query}"\n\nMy projects:\n${JSON.stringify(projectList, null, 2)}`,
         },
       ],
-      thinking: { type: 'disabled' },
+      temperature: 0.3,
     });
-
-    const content = completion.choices?.[0]?.message?.content || '[]';
+    // Keep the original regex extraction — some providers still wrap arrays.
     const jsonMatch = content.match(/\[[\s\S]*\]/);
     const matches = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import ZAI from 'z-ai-web-dev-sdk';
+// Why: provider-agnostic LLM client (see src/lib/llm.ts).
+import { chat } from '@/lib/llm';
 
 export async function POST(request: NextRequest) {
   try {
@@ -48,9 +49,7 @@ export async function POST(request: NextRequest) {
           .join('\n\n')
       : 'No key files available';
 
-    const zai = await ZAI.create();
-
-    const completion = await zai.chat.completions.create({
+    const proposedReadme = await chat({
       messages: [
         {
           role: 'system',
@@ -87,10 +86,10 @@ The README should be honest — if the project is small or experimental, reflect
           ].join('\n'),
         },
       ],
-      thinking: { type: 'disabled' },
+      temperature: 0.5,
+      // README generation can be long; give it room.
+      maxTokens: 4000,
     });
-
-    const proposedReadme = completion.choices?.[0]?.message?.content || '';
 
     if (!proposedReadme) {
       return NextResponse.json({ error: 'Failed to generate README' }, { status: 500 });

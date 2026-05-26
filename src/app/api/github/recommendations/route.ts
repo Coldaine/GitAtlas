@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import ZAI from 'z-ai-web-dev-sdk';
+// Why: provider-agnostic LLM client (see src/lib/llm.ts).
+import { chat } from '@/lib/llm';
 
 // In-memory cache for 1 hour
 interface CachedRecommendations {
@@ -114,9 +115,7 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    const zai = await ZAI.create();
-
-    const completion = await zai.chat.completions.create({
+    const content = await chat({
       messages: [
         {
           role: 'system',
@@ -147,10 +146,8 @@ Project Details:
 ${JSON.stringify(projectSummaries, null, 2)}`,
         },
       ],
-      thinking: { type: 'disabled' },
+      temperature: 0.6,
     });
-
-    const content = completion.choices?.[0]?.message?.content || '[]';
     const jsonMatch = content.match(/\[[\s\S]*\]/);
     const recommendations = jsonMatch ? JSON.parse(jsonMatch[0]) : [];
 

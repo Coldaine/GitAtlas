@@ -23,7 +23,11 @@ interface Edge {
   source: string;
   target: string;
   weight: number;
-  type: 'tag' | 'dependency';
+  // Why broadened from 'tag' | 'dependency': we now support 4 additional
+  // edge strategies (framework / category / owner) so the user can isolate
+  // which signal is driving a cluster. Each gets its own gating toggle in
+  // the GraphTweaksPanel via store.connectionSources.
+  type: 'tag' | 'dependency' | 'framework' | 'category' | 'owner';
   sharedItems?: string[];
 }
 
@@ -193,7 +197,33 @@ function computeLayoutPositions(
 }
 
 export function ProjectGraph({ projects }: ProjectGraphProps) {
-  const { setSelectedProject, activeTags, nodeSizeBy, colorBy, edgeThreshold, showParticles, showClusterBackgrounds, showHealthRings, showDependencyEdges, animationSpeed, graphLayout, setGraphLayout } = useAtlasStore();
+  // Why pull physics/connection fields here: the simulation effect below and
+  // the computedEdges memo both depend on them, so reading from a single
+  // selector keeps re-renders predictable.
+  const {
+    setSelectedProject,
+    activeTags,
+    nodeSizeBy,
+    colorBy,
+    edgeThreshold,
+    showParticles,
+    showClusterBackgrounds,
+    showHealthRings,
+    showDependencyEdges,
+    animationSpeed,
+    graphLayout,
+    setGraphLayout,
+    repulsion,
+    linkStrength,
+    linkDistance,
+    depLinkDistance,
+    damping,
+    centering,
+    nodeSizeBase,
+    nodeSizeScale,
+    minSharedDeps,
+    connectionSources,
+  } = useAtlasStore();
   const svgRef = useRef<SVGSVGElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [nodes, setNodes] = useState<NodePosition[]>([]);
@@ -222,7 +252,9 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
   const [hoveredEdgeInfo, setHoveredEdgeInfo] = useState<{
     x: number;
     y: number;
-    edgeType: 'tag' | 'dependency';
+    // Why: must match Edge['type'] so framework/category/owner edges can
+    // be inspected from the tooltip just like tag/dependency edges.
+    edgeType: 'tag' | 'dependency' | 'framework' | 'category' | 'owner';
     weight: number;
     sharedItems: string[];
     sourceName: string;
@@ -230,7 +262,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
   } | null>(null);
 
   // Connections panel state (shown on node click)
-  const [connectionsPanel, setConnectionsPanel] = useState<{ nodeId: string; connections: { nodeId: string; projectName: string; sharedItems: string[]; edgeType: 'tag' | 'dependency' }[] } | null>(null);
+  const [connectionsPanel, setConnectionsPanel] = useState<{ nodeId: string; connections: { nodeId: string; projectName: string; sharedItems: string[]; edgeType: 'tag' | 'dependency' | 'framework' | 'category' | 'owner' }[] } | null>(null);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; nodeId: string } | null>(null);
@@ -256,36 +288,40 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
   const particlesRef = useRef(particles);
 
   const nodeSize = useCallback((p: Project) => {
-    const base = 10;
+    // Why store-driven base/scale: lets the GraphTweaksPanel resize every node
+    // live without forcing a graph rebuild. nodeSizeBase replaces the old
+    // hardcoded `base = 10`, nodeSizeScale multiplies the final radius.
+    const base = nodeSizeBase;
+    const scale = nodeSizeScale;
     switch (nodeSizeBy) {
       case 'stars':
-        return base + Math.min(p.stargazersCount * 3, 18);
+        return (base + Math.min(p.stargazersCount * 3, 18)) * scale;
       case 'activity': {
-        if (!p.pushedAt) return base;
+        if (!p.pushedAt) return base * scale;
         const daysSince = (Date.now() - new Date(p.pushedAt).getTime()) / (1000 * 60 * 60 * 24);
-        if (daysSince < 7) return base + 12;
-        if (daysSince < 30) return base + 8;
-        if (daysSince < 90) return base + 4;
-        if (daysSince > 365) return base - 2;
-        return base;
+        if (daysSince < 7) return (base + 12) * scale;
+        if (daysSince < 30) return (base + 8) * scale;
+        if (daysSince < 90) return (base + 4) * scale;
+        if (daysSince > 365) return Math.max(2, (base - 2) * scale);
+        return base * scale;
       }
       case 'dependencies': {
         const depCount = p.dependencies
           ? (p.dependencies.runtime?.length || 0) + (p.dependencies.dev?.length || 0)
           : 0;
-        return base + Math.min(depCount * 0.5, 14);
+        return (base + Math.min(depCount * 0.5, 14)) * scale;
       }
       case 'files': {
         const fileCount = p.fileTree ? countFiles(p.fileTree) : 0;
-        return base + Math.min(fileCount * 0.05, 14);
+        return (base + Math.min(fileCount * 0.05, 14)) * scale;
       }
       default: {
         const starBonus = Math.min(p.stargazersCount * 3, 15);
         const recencyBonus = p.pushedAt ? (Date.now() - new Date(p.pushedAt).getTime() < 30 * 24 * 60 * 60 * 1000 ? 3 : 0) : 0;
-        return base + starBonus + recencyBonus;
+        return (base + starBonus + recencyBonus) * scale;
       }
     }
-  }, [nodeSizeBy]);
+  }, [nodeSizeBy, nodeSizeBase, nodeSizeScale]);
 
   const nodeColor = useCallback((p: Project) => {
     switch (colorBy) {
@@ -317,7 +353,11 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
     }
   }, [colorBy]);
 
-  // Build edges from projects — respects edgeThreshold and showDependencyEdges
+  // Build edges from projects — each connection "source" is independently
+  // gated by store.connectionSources so the user can isolate one signal at
+  // a time (e.g. only see dependency overlap clusters). Why this matters:
+  // tag edges dominate when topics are dense, hiding genuine code-level
+  // affinity carried by dependency/framework overlap.
   const computedEdges = useMemo(() => {
     const newEdges: Edge[] = [];
     for (let i = 0; i < projects.length; i++) {
@@ -325,25 +365,57 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         const a = projects[i];
         const b = projects[j];
 
-        const aTags = new Set([...a.tags, ...a.topics, a.language].filter(Boolean));
-        const bTags = new Set([...b.tags, ...b.topics, b.language].filter(Boolean));
-        const shared = [...aTags].filter((t) => bTags.has(t));
-        if (shared.length >= edgeThreshold) {
-          newEdges.push({ source: a.id, target: b.id, weight: shared.length, type: 'tag', sharedItems: shared });
+        // 1. Tag/topic/language overlap (the original edge strategy).
+        if (connectionSources.tag) {
+          const aTags = new Set([...a.tags, ...a.topics, a.language].filter(Boolean));
+          const bTags = new Set([...b.tags, ...b.topics, b.language].filter(Boolean));
+          const shared = [...aTags].filter((t) => bTags.has(t));
+          if (shared.length >= edgeThreshold) {
+            newEdges.push({ source: a.id, target: b.id, weight: shared.length, type: 'tag', sharedItems: shared });
+          }
         }
 
-        if (showDependencyEdges && a.dependencies && b.dependencies) {
+        // 2. Shared package dependencies. Uses dedicated minSharedDeps
+        //    (default 3) instead of reusing edgeThreshold, because tag and
+        //    dependency overlaps naturally land at very different magnitudes.
+        //    Honors legacy showDependencyEdges for back-compat.
+        if (connectionSources.dependency && showDependencyEdges && a.dependencies && b.dependencies) {
           const aAll = [...(a.dependencies.runtime || []), ...(a.dependencies.dev || [])];
           const bAll = [...(b.dependencies.runtime || []), ...(b.dependencies.dev || [])];
           const sharedDeps = aAll.filter(d => bAll.includes(d));
-          if (sharedDeps.length >= Math.max(edgeThreshold, 3)) {
+          if (sharedDeps.length >= minSharedDeps) {
             newEdges.push({ source: a.id, target: b.id, weight: sharedDeps.length, type: 'dependency', sharedItems: sharedDeps });
           }
+        }
+
+        // 3. Framework overlap (from deep-analyze codeSignature). This is a
+        //    higher-signal edge than tag overlap because frameworks are
+        //    detected from actual imports rather than user-curated topics.
+        if (connectionSources.framework && a.codeSignature?.frameworks && b.codeSignature?.frameworks) {
+          const aF = a.codeSignature.frameworks;
+          const bF = b.codeSignature.frameworks;
+          const sharedF = aF.filter(f => bF.includes(f));
+          if (sharedF.length >= 1) {
+            newEdges.push({ source: a.id, target: b.id, weight: sharedF.length * 2, type: 'framework', sharedItems: sharedF });
+          }
+        }
+
+        // 4. Same category. Weak (weight=1) on purpose: prevents the graph
+        //    from collapsing into one ball per category while still hinting
+        //    at the grouping.
+        if (connectionSources.category && a.category && b.category && a.category === b.category) {
+          newEdges.push({ source: a.id, target: b.id, weight: 1, type: 'category', sharedItems: [a.category] });
+        }
+
+        // 5. Same owner. Useful when you've imported multiple orgs and want
+        //    to see ownership clusters at a glance.
+        if (connectionSources.owner && a.ownerLogin && b.ownerLogin && a.ownerLogin === b.ownerLogin) {
+          newEdges.push({ source: a.id, target: b.id, weight: 1, type: 'owner', sharedItems: [a.ownerLogin] });
         }
       }
     }
     return newEdges;
-  }, [projects, edgeThreshold, showDependencyEdges]);
+  }, [projects, edgeThreshold, showDependencyEdges, minSharedDeps, connectionSources]);
 
   // Category cluster labels
   const categoryLabels = useMemo(() => {
@@ -503,10 +575,14 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
 
       const ns = nodesRef.current;
       const es = edgesRef.current;
-      const damping = 0.92;
-      const repulsionStrength = 3500;
-      const attractionStrength = 0.004;
-      const centeringStrength = 0.008;
+      // Why read from store-driven locals: lets the GraphTweaksPanel sliders
+      // mutate the simulation live. The effect's dep array (below) includes
+      // each constant, so React tears down + restarts the loop on change,
+      // ensuring the new value is captured in this closure.
+      const _damping = damping;
+      const _repulsion = repulsion;
+      const _attraction = linkStrength;
+      const _centering = centering;
 
       for (let i = 0; i < ns.length; i++) {
         for (let j = i + 1; j < ns.length; j++) {
@@ -514,7 +590,7 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
           const dy = ns[i].y - ns[j].y;
           const distSq = dx * dx + dy * dy;
           const dist = Math.sqrt(distSq) || 1;
-          const force = repulsionStrength / (distSq + 100);
+          const force = _repulsion / (distSq + 100);
           const fx = (dx / dist) * force;
           const fy = (dy / dist) * force;
           ns[i].vx += fx;
@@ -531,8 +607,12 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
         const dx = target.x - source.x;
         const dy = target.y - source.y;
         const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-        const idealDist = edge.type === 'dependency' ? 100 : 130;
-        const strength = edge.type === 'dependency' ? attractionStrength * 1.5 : attractionStrength;
+        // Why dedicated depLinkDistance: dependency edges represent code
+        // affinity, so users typically want those clusters tighter than
+        // tag-based ones. Keeping two distances exposed in the panel makes
+        // that intuition tunable rather than guessed.
+        const idealDist = edge.type === 'dependency' ? depLinkDistance : linkDistance;
+        const strength = edge.type === 'dependency' ? _attraction * 1.5 : _attraction;
         const force = (dist - idealDist) * strength * edge.weight;
         const fx = (dx / dist) * force;
         const fy = (dy / dist) * force;
@@ -545,10 +625,10 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
       for (const node of ns) {
         if (draggingRef.current === node.id) continue;
 
-        node.vx += (centerX - node.x) * centeringStrength;
-        node.vy += (centerY - node.y) * centeringStrength;
-        node.vx *= damping;
-        node.vy *= damping;
+        node.vx += (centerX - node.x) * _centering;
+        node.vy += (centerY - node.y) * _centering;
+        node.vx *= _damping;
+        node.vy *= _damping;
         node.x += node.vx;
         node.y += node.vy;
 
@@ -565,7 +645,9 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
 
     animRef.current = requestAnimationFrame(simulate);
     return () => cancelAnimationFrame(animRef.current);
-  }, [dimensions, graphLayout]);
+    // Why these deps: any physics knob change should restart the loop so the
+    // new value lands in the simulate() closure on the next tick.
+  }, [dimensions, graphLayout, damping, repulsion, linkStrength, linkDistance, depLinkDistance, centering]);
 
   // Layout switching — compute target positions and animate when not in 'force' mode
   useEffect(() => {
@@ -1190,7 +1272,9 @@ export function ProjectGraph({ projects }: ProjectGraphProps) {
                 onClick={() => {
                   setSelectedProject(node.project);
                   // Show connections panel
-                  const conns: { nodeId: string; projectName: string; sharedItems: string[]; edgeType: 'tag' | 'dependency' }[] = [];
+                  // Why widened union: matches Edge['type'] so framework /
+                  // category / owner connections also appear in the panel.
+                  const conns: { nodeId: string; projectName: string; sharedItems: string[]; edgeType: 'tag' | 'dependency' | 'framework' | 'category' | 'owner' }[] = [];
                   for (const edge of edgesRef.current) {
                     if (edge.source === node.id) {
                       const targetP = projects.find(p => p.id === edge.target);

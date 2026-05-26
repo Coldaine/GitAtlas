@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import ZAI from 'z-ai-web-dev-sdk';
+// Why: migrated off `z-ai-web-dev-sdk` to a thin OpenAI-compatible wrapper so
+// the user can point GitAtlas at any provider (OpenAI, OpenRouter, local
+// Ollama / vLLM, etc.) via env vars. See src/lib/llm.ts.
+import { chat } from '@/lib/llm';
 
 export async function POST(request: NextRequest) {
   try {
@@ -36,7 +39,7 @@ export async function POST(request: NextRequest) {
       data: { status: 'processing' },
     });
 
-    const zai = await ZAI.create();
+    // Provider-agnostic chat client; configured via OPENAI_BASE_URL etc.
     let processed = 0;
 
     // Process in batches of 5
@@ -59,7 +62,11 @@ export async function POST(request: NextRequest) {
               project.readmeContent ? `README excerpt: ${project.readmeContent.slice(0, 2000)}` : 'No README',
             ].join('\n');
 
-            const completion = await zai.chat.completions.create({
+            // Why `chat()` (raw string) not `chatJSON()`: the original
+            // ZAI prompt asks for JSON but the response may be wrapped in
+            // prose or fences. We keep the existing regex extraction below
+            // unchanged so behaviour is identical across providers.
+            const content = await chat({
               messages: [
                 {
                   role: 'system',
@@ -78,10 +85,8 @@ Be honest and concrete. If the project seems unfinished or experimental, say so.
                   content: context,
                 },
               ],
-              thinking: { type: 'disabled' },
+              temperature: 0.4,
             });
-
-            const content = completion.choices?.[0]?.message?.content || '';
             // Extract JSON from response
             const jsonMatch = content.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
